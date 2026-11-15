@@ -6,7 +6,7 @@ This repository will become the **autonomous-world director** for AzerothCore 3.
 
 Current status is **foundation/scaffold only**. No production recruitment, persistence protection, party forming, dungeon execution or PvP exists yet. Do not describe intended behaviour as implemented.
 
-Read `README.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md` and the relevant GitHub issue before changing code. Keep the design aligned with the issue's acceptance criteria.
+Read `README.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/INTEGRATION.md`, `docs/LICENSING.md` and the relevant GitHub issue before changing code. Keep the design aligned with the issue's acceptance criteria.
 
 ### Source-of-truth repositories
 
@@ -54,7 +54,7 @@ The policy in `src/Policy/PopulationPolicy.h` is an **engine-independent policy 
 
 - `CMakeLists.txt` registers AzerothCore scripts from `src/` and config from `conf/`.
 - The generated AzerothCore loader expects **`Addmod_playerbot_autonomyScripts()`** for directory `mod-playerbot-autonomy`. Do not rename casually.
-- C++20; use four spaces, UTF-8/LF, trailing newline, scoped types and simple ownership. Prefer pure, testable decision functions separated from game-engine adapters.
+- The deployed AzerothCore build has C++17 compatibility constraints. Production module code must compile under the actual core/toolchain; do not assume C++20-only syntax is safe. Run standalone policy tests in **both C++17 and C++20**. Use four spaces, UTF-8/LF, trailing newline, scoped types and simple ownership. Prefer pure, testable decision functions separated from game-engine adapters.
 - `src/Policy/` holds engine-independent decisions; `src/` top-level holds script entry points. Introduce `src/Director/`, `src/Guild/`, `src/Operations/`, `src/Economy/`, `src/Integration/` and `src/Persistence/` **only when implemented**; do not create dead abstractions.
 - Document actual runtime configuration in `conf/mod_playerbot_autonomy.conf.dist`. New dangerous functionality defaults OFF.
 - Prefer schema migrations over editing vendor/base SQL. Never put code-generated secrets, private world databases or production logs in git.
@@ -69,8 +69,9 @@ The policy in `src/Policy/PopulationPolicy.h` is an **engine-independent policy 
 3. Write a short implementation and verification plan. For cross-repo API changes, pin exact commit refs and specify compatibility.
 4. Add/update deterministic unit tests for pure policies and integration tests for engine boundaries where practical.
 5. Run the fast standalone test for policy changes:
-   `c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests && /tmp/autonomy-policy-tests`
-6. If the task requires a core build or live realm execution, do it only when the actual supported core and dependencies are available; report precisely what was built and tested. Never substitute a standalone policy test for module build verification.
+   `c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests && /tmp/autonomy-policy-tests`
+   Then repeat with `-std=c++20`, and run `python3 -m unittest discover -s tests -p 'test_*.py'` and `python3 tools/verify_scaffold.py`.
+6. If the task requires a core build or live realm execution, do it only when the actual supported core and dependencies are available; report precisely what was built and tested. The PR source-contract workflow checks pinned external APIs, **not** compilation, linking or startup. Never substitute standalone/contract tests for game-server verification.
 7. Self-review backward compatibility, dormant/disabled-state behaviour, pointer/thread safety, idempotency, rollback, real-player boundaries and load impact.
 8. Open a PR with: problem, behaviour change, dependency commits, verification performed/results, rollout/rollback, and risks. Do not claim a successful test without output.
 9. update open or close issues based on completed work, and link to PRs. Do not close issues without a PR or a clear explanation of why the issue is no longer relevant.

@@ -1,4 +1,4 @@
-name: Standalone policy checks
+name: Standalone policy and pinned source contracts
 
 on:
   push:
@@ -9,18 +9,81 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: autonomy-contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   policy:
     runs-on: ubuntu-latest
+    name: policy (${{ matrix.standard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        standard: [c++17, c++20]
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and run engine-independent policy tests
+      - name: Compile and run policy tests
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
         run: |
-          c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc \
+          c++ -std="$CXX_STANDARD" -Wall -Wextra -Werror -pedantic -Isrc \
             tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
           /tmp/autonomy-policy-tests
-      - name: Check module scaffold
+      - name: Test source contract checker
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Validate scaffold
         run: python3 tools/verify_scaffold.py
 
-# Deliberately does NOT claim to build against AzerothCore.
-# Add a separate pinned-core integration build when the adapters are introduced.
+  integration-contracts:
+    runs-on: ubuntu-latest
+    name: pinned external source-shape check (not a build)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Sparse public checkouts; pins are a reviewable contract snapshot,
+      # NOT a claim of the exact dependency SHAs in the old homelab build.
+      - name: Checkout playerbots core contract files
+        uses: actions/checkout@v4
+        with:
+          repository: mod-playerbots/azerothcore-wotlk
+          ref: 0554bcdd664ff6d85291ca2a10fd31d3e37e89e6
+          path: _deps/core
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/cmake/ac_macros.cmake
+            modules/CMakeLists.txt
+            src/server/game/Scripting/ScriptDefines/WorldScript.h
+            src/common/Configuration/Config.h
+      - name: Checkout mod-playerbots contract file
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-playerbots
+          ref: 59e5f26d417fca173d969cd6a1064ec9638b1afa
+          path: _deps/playerbots
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/Bot/RandomPlayerbotMgr.cpp
+      - name: Checkout mod-dungeon-clear contract file
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-dungeon-clear
+          ref: b1be76d93da4b409daa7a2c9a8f27301e540af4a
+          path: _deps/dungeon-clear
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/mod_dungeon_clear_loader.cpp
+      - name: Verify boundary contracts without building the game
+        run: |
+          python3 tools/check_integration_contracts.py \
+            --core _deps/core \
+            --playerbots _deps/playerbots \
+            --dungeon-clear _deps/dungeon-clear \
+            --autonomy .
+
+# This CI is intentionally cheap. Full worldserver compilation and runtime
+# registration are distinct manual release gates described in docs/INTEGRATION.md.

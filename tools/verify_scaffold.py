@@ -14,6 +14,10 @@ required = [
     "tests/PopulationPolicyTests.cpp",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
+    "docs/INTEGRATION.md",
+    "docs/LICENSING.md",
+    "tools/check_integration_contracts.py",
+    "tests/test_integration_contracts.py",
 ]
 for name in required:
     assert (root / name).is_file(), f"Missing required scaffold file: {name}"
@@ -24,7 +28,7 @@ config = (root / "conf/mod_playerbot_autonomy.conf.dist").read_text()
 script = (root / "src/AutonomyModule.cpp").read_text()
 
 assert 'AC_ADD_SCRIPT("${CMAKE_CURRENT_LIST_DIR}/src")' in cmake
-assert "AC_ADD_CONFIG_FILE" in cmake
+assert "AC_ADD_CONFIG_FILE(" not in cmake
 assert "Addmod_playerbot_autonomyScripts()" in loader
 assert "AddSC_playerbot_autonomy_module()" in loader
 assert "void AddSC_playerbot_autonomy_module()" in script
