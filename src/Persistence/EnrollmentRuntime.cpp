@@ -28,6 +28,7 @@ constexpr uint32 QueryTimeout = 30000;
 
 [[noreturn]] void FailStopWithoutProtection(char const* reason)
 {
+    (void)reason;  // Test fake LOG_ERROR discards formatted arguments.
     // A worldserver without our veto can destroy Pending/Persistent characters.
     // Logging and continuing leaves an apparently enabled, unprotected realm.
     LOG_ERROR("module", "FATAL: playerbot autonomy cannot run without maintenance v1 protection: {}", reason);
