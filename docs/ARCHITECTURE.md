@@ -1,6 +1,6 @@
 # Architecture and safety invariants
 
-> Planned design; only the foundation module entry point and pure policy seed exist today.
+> Planned runtime design; the foundation module and pure policy rules exist, plus a not-yet-applied enrollment schema and lifecycle contract. No live enrollment or reset guards have been wired.
 
 ## Three cooperating modules
 
@@ -39,6 +39,8 @@ random bot, no guild  -> WORLD_FILLER -> original level rotation/rerolls
                       v
                  WORLD_FILLER
 ```
+
+To avoid a crash gap during recruitment, first durably stage a **PENDING** record, then perform the guild operation, then confirm **PERSISTENT**. The pending state prevents destructive maintenance until the operation is safely reconciled. See [ENROLLMENT.md](ENROLLMENT.md).
 
 A character in a human-managed guild can be classified as persistent but MUST NOT automatically be governed by the autonomous guild director. Human-controlled and selfbot characters are unmanaged, irrespective of guild membership.
 
