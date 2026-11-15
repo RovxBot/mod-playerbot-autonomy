@@ -38,7 +38,7 @@ Check out the repository at `modules/mod-playerbot-autonomy/` alongside `modules
 PlayerbotAutonomy.Enable = 0
 ```
 
-The only current enabled-state effect is a startup log that says runtime features are not yet implemented; there is no active bot manipulation, even if the option is changed to `1`.
+Enabling requires the two enrollment migrations and the matching playerbots v1 maintenance capability. Without that capability, enrollment remains unavailable. With it, the provider blocks unknown candidates until the asynchronous cache has reconciled; explicit console operations can then write enrollment and audit records. No guild or progression data is changed by enrollment. Full build and controlled realm validation remain required before rollout.
 
 ### Fast, standalone policy and enrollment tests
 
