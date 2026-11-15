@@ -1,0 +1,26 @@
+name: Standalone policy checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run engine-independent policy tests
+        run: |
+          c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
+          /tmp/autonomy-policy-tests
+      - name: Check module scaffold
+        run: python3 tools/verify_scaffold.py
+
+# Deliberately does NOT claim to build against AzerothCore.
+# Add a separate pinned-core integration build when the adapters are introduced.

@@ -1,1 +1,61 @@
 # mod-playerbot-autonomy
+
+A planned autonomous-world simulation module for the [AzerothCore WotLK playerbots fork](https://github.com/mod-playerbots/azerothcore-wotlk), designed to work alongside [RovxBot/mod-playerbots](https://github.com/RovxBot/mod-playerbots) and [RovxBot/mod-dungeon-clear](https://github.com/RovxBot/mod-dungeon-clear).
+
+> **Status: foundation only.** The module currently registers a disabled-by-default, inert WorldScript and ships an engine-independent population policy with tests. It does **not** yet recruit bots, protect characters from resets, run dungeons or simulate guild activity.
+
+## Vision
+
+Create a populated MMO world with two complementary types of random playerbots:
+
+| | Unguilded world filler | Guilded persistent bot |
+| --- | --- | --- |
+| Role | Keep every zone and level bracket alive | Develop a lasting character and guild history |
+| Randomisation and level resets | Existing mod-playerbots behaviour continues | No destructive rerolls or level resets |
+| Gathering, crafting, auction house | Existing systems continue | Existing systems continue; future guild supply chain |
+| Recruitment | Eligible to join bot guilds | Already recruited |
+| Organised operations | Not initially | Future dungeons, world PvP and raids |
+
+**Recruitment is the transition.** A random bot joining a guild retains its current character and becomes persistent; it receives no free levels, items, gold or skills. Persistent enrollment survives incidental guild loss until explicitly retired. Random bots in human-managed guilds retain their characters but are *not* automatically directed by this module.
+
+Long-term goals include autonomous five-player dungeon runs, guild economies, Southshore/Tarren Mill battles, guild rivalries, town and city assaults, and 10-/25-player raids. Those are roadmap targets, **not implemented features**.
+
+## Responsibility boundaries
+
+- **mod-playerbots:** bot population, existing AI and combat strategies, characters, gathering, crafting, auctions, inventory, group management and random-bot maintenance.
+- **mod-dungeon-clear:** dungeon navigation, encounters, party execution and dungeon progression.
+- **mod-playerbot-autonomy:** population lifecycle policy, persistence decisions, guild planning, activity reservations, expedition orchestration and future economy/PvP/raid coordination.
+
+This module must not duplicate the profession loop or the dungeon-clearing AI. Small opt-in extension interfaces may be needed in the other modules to block destructive random-bot maintenance and safely authorize masterless dungeon runs. Do not weaken the existing player/GM command permissions.
+
+## Installation / current build
+
+Check out the repository at `modules/mod-playerbot-autonomy/` alongside `modules/mod-playerbots/` in a matching, supported **playerbots fork of AzerothCore**, not stock AzerothCore. Consult the source module and core branch compatibility before building; do not assume `master`, `test-staging` and `Playerbot` are interchangeable.
+
+`CMakeLists.txt` registers the module's `src/` scripts and `conf/mod_playerbot_autonomy.conf.dist`. Set:
+
+```ini
+PlayerbotAutonomy.Enable = 0
+```
+
+The only current enabled-state effect is a startup log that says runtime features are not yet implemented; there is no active bot manipulation, even if the option is changed to `1`.
+
+### Fast, standalone policy test
+
+Without an AzerothCore checkout:
+
+```sh
+c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
+/tmp/autonomy-policy-tests
+```
+
+This tests the **pure decision policy only**. It is not a module compilation or live realm validation.
+
+## Documentation and tracking
+
+- [Agent instructions](AGENTS.md) — required behaviour for Codex and other coding agents.
+- [Architecture and invariants](docs/ARCHITECTURE.md) — boundaries, lifecycle and safety constraints.
+- [Delivery roadmap](docs/ROADMAP.md) — incrementally validated milestones.
+- [Issues](https://github.com/RovxBot/mod-playerbot-autonomy/issues) — implementation work and acceptance criteria.
+
+All future functionality is opt-in, measurable and recoverable by default.
