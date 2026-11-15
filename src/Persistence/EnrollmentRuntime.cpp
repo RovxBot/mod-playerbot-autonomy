@@ -1,5 +1,6 @@
 #include "EnrollmentRuntime.h"
 
+#include <cstdlib>
 #include <limits>
 
 #include "CharacterCache.h"
@@ -25,6 +26,14 @@ constexpr uint32 PageSize = 128;
 constexpr uint32 SweepInterval = 60000;
 constexpr uint32 QueryTimeout = 30000;
 
+[[noreturn]] void FailStopWithoutProtection(char const* reason)
+{
+    // A worldserver without our veto can destroy Pending/Persistent characters.
+    // Logging and continuing leaves an apparently enabled, unprotected realm.
+    LOG_ERROR("module", "FATAL: playerbot autonomy cannot run without maintenance v1 protection: {}", reason);
+    std::abort();
+}
+
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
 bool MaintenanceProvider(uint32 guid, Playerbots::RoutineMaintenance::Action action)
 {
@@ -48,6 +57,16 @@ EnrollmentRuntime& Runtime()
 
 void EnrollmentRuntime::Configure(bool enabled)
 {
+#ifdef AUTONOMY_HAS_MAINTENANCE_V1
+    static_assert(Playerbots::RoutineMaintenance::ContractVersion == 1, "Maintenance contract mismatch");
+    if (enabled && !Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider))
+        FailStopWithoutProtection("maintenance provider already owned by another module");
+#else
+    if (enabled)
+        FailStopWithoutProtection("required playerbots interface was absent at compilation");
+#endif
+    // Never publish the enabled state until the process-lifetime veto is
+    // registered. A readiness=false cache then blocks unknown characters.
     ++_configuration;
     _cache.SetEnabled(enabled);
     _cache.SetReady(false);
@@ -55,10 +74,7 @@ void EnrollmentRuntime::Configure(bool enabled)
     _cursor = 0;
     _attempted = _opened;
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
-    static_assert(Playerbots::RoutineMaintenance::ContractVersion == 1, "Maintenance contract mismatch");
-    if (enabled)
-        Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider);
-    else
+    if (!enabled)
         Playerbots::RoutineMaintenance::UnregisterProvider(&MaintenanceProvider);
 #endif
 }
@@ -76,13 +92,10 @@ void EnrollmentRuntime::Start(std::string const& databaseInfo)
 {
     _databaseInfo = databaseInfo;
     _owner = std::this_thread::get_id();
-    if (!_cache.Enabled() || !ProtectionAvailable())
-    {
-        LOG_INFO("module",
-                 "autonomy enrollment: disabled or maintenance v1 "
-                 "unavailable; enrollment unavailable");
+    if (!_cache.Enabled())
         return;
-    }
+    if (!ProtectionAvailable())
+        FailStopWithoutProtection("enabled startup has no registered maintenance provider");
     _attempted = true;
     _opened = _store.Initialize(databaseInfo);
     if (!_opened)
@@ -137,7 +150,9 @@ void EnrollmentRuntime::Update(uint32 diff)
 {
     if (!OnWorldThread())
         return;
-    if (_cache.Enabled() && ProtectionAvailable() && !_attempted && !_opened)
+    if (_cache.Enabled() && !ProtectionAvailable())
+        FailStopWithoutProtection("maintenance provider was lost while autonomy remained enabled");
+    if (_cache.Enabled() && !_attempted && !_opened)
     {
         Start(_databaseInfo);
         return;

@@ -33,9 +33,11 @@ Dungeon-clear master was inspected at `1a336ad58debdc2ffee598e78ce216ccff35153f`
 it is not changed or required by enrollment.
 
 `RoutineMaintenancePolicy.h` v1 must be visible when compiling autonomy, with both
-modules statically linked into the same worldserver. Without it, the adapter never
-opens its pool or accepts enrollment. Provider ownership cannot overwrite another
-provider. The provider is installed during script registration, before world
+modules statically linked into the same worldserver. When the feature is enabled without that interface (or when registration
+conflicts with another provider), the server intentionally **aborts** at
+startup/configuration rather than risking reset of enrolled characters.
+Provider ownership cannot overwrite another provider. The provider is
+installed during script registration, before world
 initialization/configured bot factories. Until the cache loads, unknown candidates
 are vetoed. Verify this ordering in the integrated server before enabling.
 
@@ -44,7 +46,11 @@ enrollment DB connection and accepts no transitions, guild hooks with effects,
 or maintenance provider. A pool opened during an enabled session is retained
 until shutdown, while disabled mode schedules no new SQL. A reload to 0
 removes the provider immediately and prevents new work. An already submitted SQL
-transaction may finish; its history is retained. Re-enable rebuilds readiness.
+transaction may finish; its history is retained. **Do not disable or restart
+with Enable=0 while any Pending/Persistent character exists:** current reload
+semantics unregister the callback, restoring destructive filler maintenance.
+Safely retiring all enrolled bots or stopping the realm before maintenance is
+required before operator rollback. This remains an explicit release gate. Re-enable rebuilds readiness.
 An initial pool-open/prepare failure requires a config reload or restart to retry; failures
 on established connections/schema/page queries retry with a five-second backoff.
 
@@ -90,7 +96,14 @@ committed receipt may be retried; only committed transitions reserve their ID.
 
 ## Explicit console lifecycle
 
-Only console/authenticated RA requests are accepted; player/GM chat is rejected.
+Only local console or administrator-authenticated RA/SOAP requests are accepted;
+player/GM chat is rejected. On this core, CLI/RA/SOAP commands are all dispatched
+through a sessionless CliHandler (normal in-game RBAC checks do not distinguish
+them). The high-privilege command metadata is not a sufficient authorization
+boundary on its own: **PlayerbotAutonomy.AllowEnrollmentCommands=1** must also
+be set deliberately by an operator before lifecycle mutations are accepted.
+This option defaults to 0, independently of the maintenance-protection switch.
+
 This is an administrative M1 lifecycle, **not an autonomous guild director**.
 There is no automatic adoption, recruitment scan, guild creation/join/leave,
 reward generation, teleport or immediate reroll. Normal guild APIs/authorized

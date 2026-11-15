@@ -5,6 +5,12 @@
 #endif
 #include <cassert>
 #include <iostream>
+#if defined(__unix__)
+#include <csignal>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 #include "CoreFakes.h"
 
@@ -14,6 +20,29 @@ namespace Maintenance = Playerbots::RoutineMaintenance;
 #endif
 namespace
 {
+#if defined(__unix__)
+// Verify an unsafe enabled process terminates rather than running without the
+// maintenance veto. Run the fatal path in a child, never the CI test process.
+template <typename Callback>
+void AssertFailsClosed(Callback callback)
+{
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0)
+    {
+        struct rlimit noCore = {0, 0};
+        setrlimit(RLIMIT_CORE, &noCore);
+        callback();
+        _exit(0);  // A surviving child means the safety check failed.
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT);
+}
+#endif
+#ifdef TEST_MAINTENANCE_PRESENT
+bool CompetingProvider(std::uint32_t, Maintenance::Action) { return false; }
+#endif
 EnrollmentRecord durable{42, 7, 0, 0, EnrollmentState::Absent, true, true};
 std::unordered_map<std::string, std::vector<Field>> receipts;
 bool openWorks = true;
@@ -109,13 +138,20 @@ TransactionCallback EnrollmentStore::ReconcileOrphan(uint32)
 int main()
 {
 #ifndef TEST_MAINTENANCE_PRESENT
-    Runtime().Configure(true);
+    Runtime().Configure(false);
     Runtime().Start("throwaway");
-    Pump();
     assert(!Runtime().ProtectionAvailable() && FakeDatabaseCalls == 0);
     assert(!Runtime().Submit(Request(EnrollmentRequest::StageBeforeGuildJoin, 0, '1')));
-    std::cout << "Missing-maintenance capability test passed; enrollment unavailable\n";
+#if defined(__unix__)
+    AssertFailsClosed([] { Runtime().Configure(true); });
+#endif
+    std::cout << "Missing-maintenance capability fails closed on enable; legacy mode stays off\n";
 #else
+#if defined(__unix__)
+    assert(Maintenance::RegisterProvider(&CompetingProvider));
+    AssertFailsClosed([] { Runtime().Configure(true); });
+    Maintenance::UnregisterProvider(&CompetingProvider);
+#endif
     auto& runtime = Runtime();
     runtime.Configure(false);
     runtime.Start("throwaway");

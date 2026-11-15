@@ -38,7 +38,7 @@ Check out the repository at `modules/mod-playerbot-autonomy/` alongside `modules
 PlayerbotAutonomy.Enable = 0
 ```
 
-Enabling requires the two enrollment migrations and the matching playerbots v1 maintenance capability. Without that capability, enrollment remains unavailable. With it, the provider blocks unknown candidates until the asynchronous cache has reconciled; explicit console operations can then write enrollment and audit records. No guild or progression data is changed by enrollment. Full build and controlled realm validation remain required before rollout.
+Enabling requires the two enrollment migrations and the matching playerbots v1 maintenance capability. If that capability is missing while enabled, worldserver deliberately aborts rather than allowing unprotected random-bot maintenance. With it, the provider blocks unknown candidates until the asynchronous cache has reconciled; explicit operator-enabled console/administrator-RA operations can then write enrollment and audit records, but only when PlayerbotAutonomy.AllowEnrollmentCommands=1. No guild or progression data is changed by enrollment. Full build and controlled realm validation remain required before rollout.
 
 ### Fast, standalone policy and enrollment tests
 

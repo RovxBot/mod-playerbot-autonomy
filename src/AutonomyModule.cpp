@@ -88,7 +88,10 @@ public:
     Acore::ChatCommands::ChatCommandTable GetCommands() const override
     {
         using namespace Acore::ChatCommands;
-        return {{"autonomy", Handle, rbac::RBAC_PERM_COMMAND_SERVER_INFO, Console::Yes}};
+        // CLI/RA/SOAP commands bypass normal in-game RBAC checks. Require an
+        // administrator-equivalent command permission for metadata, plus a
+        // separate explicit configuration gate for lifecycle mutations.
+        return {{"autonomy", Handle, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN_FORCE, Console::Yes}};
     }
 
 private:
@@ -125,6 +128,17 @@ private:
             request.Action = EnrollmentRequest::ExplicitRetirement;
         else
             return false;
+        // The target core's CLI dispatcher treats local console, authenticated
+        // RA and admin SOAP alike, regardless of the RBAC command ID. Mutating
+        // enrollment is therefore a distinct operator opt-in, never implied
+        // by enabling the maintenance-protection provider.
+        if (!sConfigMgr->GetOption<bool>("PlayerbotAutonomy.AllowEnrollmentCommands", false))
+        {
+            handler->SendSysMessage(
+                "Enrollment mutations disabled. Set PlayerbotAutonomy.AllowEnrollmentCommands=1 "
+                "only for an authorized, supervised transition.");
+            return true;
+        }
         if (!(input >> request.Guid >> request.ExpectedRevision >> request.Guild >> request.RequestId))
             return false;
         std::getline(input >> std::ws, request.Reason);
