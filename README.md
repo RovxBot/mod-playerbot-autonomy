@@ -2,7 +2,7 @@
 
 A planned autonomous-world simulation module for the [AzerothCore WotLK playerbots fork](https://github.com/mod-playerbots/azerothcore-wotlk), designed to work alongside [RovxBot/mod-playerbots](https://github.com/RovxBot/mod-playerbots) and [RovxBot/mod-dungeon-clear](https://github.com/RovxBot/mod-dungeon-clear).
 
-> **Status: foundation and M1 contract only.** The module registers a disabled-by-default, inert WorldScript and now includes a proposed character-enrollment schema, pure two-phase lifecycle decision rules and tests. **No database adapter, runtime enrollment, reset protection or recruitment is installed.**
+> **Status: M1 runtime candidate, not deployed.** The branch implements a disabled-by-default character-enrollment adapter, durable lifecycle, cached maintenance provider and tests. **No full combined worldserver build, real character pilot, or live enrollment is yet proven.** Do not enable on the realm before the integration gates pass.
 
 ## Vision
 
@@ -52,7 +52,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Isrc tests/EnrollmentStateTests.
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-This tests **pure decisions and static migration structure only**. CI runs the C++ tests in C++17 and C++20 and checks pinned dependency source contracts. Nothing here executes the SQL migration, connects to MySQL, installs engine hooks or substitutes for a full server test.
+CI tests pure C++17/C++20 decisions, fake engine/DB boundaries, pinned maintenance-provider integration and the actual prepared SQL on disposable MySQL 8.x. None of these proves combined worldserver linkage, live startup, or an in-game persistence pilot.
 
 ## Build validation and follow-up
 

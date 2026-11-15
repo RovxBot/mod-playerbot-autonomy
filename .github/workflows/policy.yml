@@ -81,10 +81,14 @@ jobs:
 
   mysql-transactions:
     runs-on: ubuntu-latest
-    name: disposable MySQL 8 transactions (not a game-server test)
+    name: disposable MySQL ${{ matrix.mysql }} transactions (not a game-server test)
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['8.0', '8.4.10']
     services:
       mysql:
-        image: mysql:8.4.10
+        image: mysql:${{ matrix.mysql }}
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
           MYSQL_ROOT_HOST: "%"

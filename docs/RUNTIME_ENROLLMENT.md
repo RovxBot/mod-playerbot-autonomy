@@ -19,16 +19,13 @@ The new module source uses C++17 constructs; that core's headers require GNU
 C++20. C++17/C++20 policy/controller tests do not establish compatibility with an
 older deployed core that lacks `ModuleDatabasePool`.
 
-The playerbots v1 implementation is pinned at
-`3beeabf9735766edfa24abf9032b20e8c2bb25e2` (source branch
-`feature/optional-maintenance-policy` in `RovxBot/mod-playerbots`). It targets the
-required **test-staging** branch at
-`889e9dd6e354d87d11933a093c709016b110e179`. Production module **master** at
-`59e5f26d417fca173d969cd6a1064ec9638b1afa` is **184 commits ahead** of that base.
-The production core branch reported by the owner is `test-staging`, although
-playerbots' documented pairing says module master/core Playerbot. This existing
-combination is not assumed compatible. A master port artifact, syntax checks and
-boundary tests are preparation for maintainer promotion, not a deployment signoff.
+The playerbots v1 interface is now merged into **RovxBot/mod-playerbots
+master** at `08b6bd127513d7273b1fcb765e537c5a3cd813ec`.
+The maintenance changes were ported onto the original master branch, preserving
+the newer profession and guild-bank deposit routines. Autonomy's standalone
+provider tests are pinned to that **actual merged master** commit.
+The target core used in homelab remains `test-staging`; source-level checks
+do **not** replace a complete build/link using the production core/module pair.
 Dungeon-clear master was inspected at `1a336ad58debdc2ffee598e78ce216ccff35153f`;
 it is not changed or required by enrollment.
 
