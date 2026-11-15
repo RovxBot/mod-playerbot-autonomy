@@ -73,6 +73,8 @@ The policy in `src/Policy/PopulationPolicy.h` is an **engine-independent policy 
 6. If the task requires a core build or live realm execution, do it only when the actual supported core and dependencies are available; report precisely what was built and tested. Never substitute a standalone policy test for module build verification.
 7. Self-review backward compatibility, dormant/disabled-state behaviour, pointer/thread safety, idempotency, rollback, real-player boundaries and load impact.
 8. Open a PR with: problem, behaviour change, dependency commits, verification performed/results, rollout/rollback, and risks. Do not claim a successful test without output.
+9. update open or close issues based on completed work, and link to PRs. Do not close issues without a PR or a clear explanation of why the issue is no longer relevant.
+10. Never tag or mention a a PR or issue outside of this repository.
 
 ## Scope and milestones
 
