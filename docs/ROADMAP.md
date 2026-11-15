@@ -6,7 +6,8 @@ This is the intended delivery sequence, **not a claim of completed functionality
 - AzerothCore registration, inert opt-in config and script loader.
 - Detailed AGENTS.md, architecture, roadmap, PR template, lightweight CI.
 - Engine-independent population classification policy and standalone unit tests.
-- **Exit:** standalone CI green, source reviewed; core compile to be verified separately.
+- **Build evidence:** standalone policy CI green; 15 Nov 2026 homelab image build compiled/linked the module and published a worldserver image. Runtime startup of that new image and final licence decision are **still outstanding** (see `docs/INTEGRATION.md`).
+- **Exit:** review integration evidence, validate a live startup on the new image, and resolve or explicitly track licensing obligations; do not claim all M0 exit gates complete from build success alone.
 
 ## M1 — Two populations and durable lifecycle (first runtime priority)
 - Unguilded random bots retain existing reroll, level brackets, zone rotation, gathering, crafting and auctions.

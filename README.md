@@ -32,7 +32,7 @@ This module must not duplicate the profession loop or the dungeon-clearing AI. S
 
 Check out the repository at `modules/mod-playerbot-autonomy/` alongside `modules/mod-playerbots/` in a matching, supported **playerbots fork of AzerothCore**, not stock AzerothCore. Consult the source module and core branch compatibility before building; do not assume `master`, `test-staging` and `Playerbot` are interchangeable.
 
-`CMakeLists.txt` registers the module's `src/` scripts and `conf/mod_playerbot_autonomy.conf.dist`. Set:
+`CMakeLists.txt` registers scripts under `src/`. The playerbots core automatically discovers and installs `conf/*.conf.dist`; its older `AC_ADD_CONFIG_FILE` macro is deprecated and has no effect. Set:
 
 ```ini
 PlayerbotAutonomy.Enable = 0
@@ -49,13 +49,21 @@ c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests
 /tmp/autonomy-policy-tests
 ```
 
-This tests the **pure decision policy only**. It is not a module compilation or live realm validation.
+This tests the **pure decision policy only**. CI also compiles it as C++17 and runs a source-only check against pinned dependency snapshots. Neither check substitutes for a full game-server build or live realm validation.
+
+## Build validation and follow-up
+
+The [15 November 2026 homelab WotLK build](https://github.com/RovxBot/homelab-infra/actions/runs/43679235448) compiled both autonomy source files and successfully linked/published the worldserver image. The build is verified, but at review time the live pod still ran an **older image**, so startup registration of the *new* image remained unverified.
+
+See [integration evidence, exact limitations and lightweight PR gates](docs/INTEGRATION.md). The [licence notice audit](docs/LICENSING.md) remains unresolved pending confirmation; do not import external code assuming licensing compatibility.
 
 ## Documentation and tracking
 
 - [Agent instructions](AGENTS.md) — required behaviour for Codex and other coding agents.
 - [Architecture and invariants](docs/ARCHITECTURE.md) — boundaries, lifecycle and safety constraints.
 - [Delivery roadmap](docs/ROADMAP.md) — incrementally validated milestones.
+- [Integration verification](docs/INTEGRATION.md) — proven image build, source contract checks, deployment gate.
+- [Licensing review](docs/LICENSING.md) — observed notices and unresolved licence questions.
 - [Issues](https://github.com/RovxBot/mod-playerbot-autonomy/issues) — implementation work and acceptance criteria.
 
 All future functionality is opt-in, measurable and recoverable by default.
