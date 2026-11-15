@@ -31,11 +31,24 @@ Source-verified against the target core family:
 
 **These are source-contract observations**, not guarantees that arbitrary new engine integration code will compile.
 
-## Live runtime status at time of review
+## Live deployment verification — 15 November 2026
 
-A read-only Kubernetes check on 15 November 2026 found a Ready worldserver pod running the **older image**, tagged **worldserver-test-staging-7d1d58dccafee70e2f0ba57978bfbae3684b6edc**. It had zero container restarts. It was **not** using the new b23d84c image. Consequently the new autonomy module's startup log and runtime registration have **not yet been verified on the live server**.
+A **second**, read-only Kubernetes inspection after the operator's deployment confirmed:
 
-Do not roll out the new image as part of documentation/CI maintenance.
+- Namespace: **wotlk**.
+- Worldserver pod: **wotlk-worldserver-8474749446-2sth2**.
+- Running image tag: **worldserver-test-staging-b23d84c487f186e0d00b72efc781ff573904d395**, matching the successful image build above.
+- State: **Running**, **Ready**, **zero container restarts**.
+- Authserver pod: **wotlk-authserver-d986db4cf-69frm**, likewise using the **b23d84c...** authserver image; **Running**, **Ready**, **zero restarts**.
+- The live worldserver started successfully with the **new image**. No deployment or configuration changes were made during this review.
+
+**Important remaining verification distinction:** the live worldserver container logs did **not** show the expected `mod-playerbot-autonomy: disabled (foundation only)` message. This is expected given the currently checked-in production logging settings in
+`RovxBot/homelab-infra/apps/wotlk/config/worldserver.conf`:
+`Logger.module=2,Console Errors` and `Appender.Console=1,2,...`. The core's
+`LogCommon.h` defines level **2 = ERROR**, **4 = INFO**, while the autonomy startup path uses `LOG_INFO("module", ...)`. Thus the configured logger and console appender filter the message out.
+**Absence of this INFO log is not evidence the startup callback failed, but it is also not direct confirmation the callback executed.**
+
+This establishes successful startup of the linked worldserver image, not a detailed gameplay regression test or explicit observation of the autonomy startup hook. If direct hook evidence is later required, use a **controlled temporary logging change with both logger and appender levels set to INFO** or a purpose-built future module status check; do not broaden production logging just for this documentation task. The default module switch remains `0` in the distributed config.
 
 ## Lightweight PR validation (no full core build)
 
@@ -73,12 +86,12 @@ python3 tools/check_integration_contracts.py \
 
 Paths above are an example, not a requirement to rearrange current checkouts.
 
-## Release gate after a deliberate future deployment
+## Remaining runtime and release gates
 
-1. Record the running worldserver image tag/digest and module source revision.
-2. On first startup with the default **PlayerbotAutonomy.Enable = 0**, check for the expected **mod-playerbot-autonomy: disabled (foundation only)** log line.
-3. Verify worldserver readiness and existing manual dungeon-clear, RDF, guilds, gathering, crafting and auctions remain functional.
-4. Optionally on a controlled restart, set **PlayerbotAutonomy.Enable = 1**. At this stage it should only log **foundation enabled; no runtime features are implemented**. Restore disabled configuration afterward.
-5. Add runtime evidence to **issue #3**. Only mark its startup acceptance gate complete after verifying the **new** image; do not infer runtime from build success.
+1. **Completed:** new worldserver image tag verified on the live pod; container is Ready and has zero restarts.
+2. **Remaining:** record a startup-hook observation if needed using suitably configured module and console/file logger levels; don't treat a suppressed INFO message as missing registration.
+3. **Remaining:** explicitly verify existing manual dungeon-clear, RDF, guilds, gathering, crafting and auctions remain functional. Pod health alone cannot prove gameplay compatibility.
+4. **Optional only:** on a controlled restart, test `PlayerbotAutonomy.Enable = 1` and capture the startup message at INFO level. It must manipulate no bots; restore disabled config afterward.
+5. Update issue #3 with the actual observations and record any unresolved licensing/revision provenance tasks separately. Do not rerun the multi-hour build merely to capture a log message.
 
 No routine PR should trigger the prior multi-hour image build. New C++/runtime integration should instead request a separate consciously scoped full build and live test.

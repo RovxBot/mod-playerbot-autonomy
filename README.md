@@ -53,7 +53,7 @@ This tests the **pure decision policy only**. CI also compiles it as C++17 and r
 
 ## Build validation and follow-up
 
-The [15 November 2026 homelab WotLK build](https://github.com/RovxBot/homelab-infra/actions/runs/43679235448) compiled both autonomy source files and successfully linked/published the worldserver image. The build is verified, but at review time the live pod still ran an **older image**, so startup registration of the *new* image remained unverified.
+The [15 November 2026 homelab WotLK build](https://github.com/RovxBot/homelab-infra/actions/runs/43679235448) compiled both autonomy source files and successfully linked/published the worldserver image. The build is verified, and a subsequent read-only Kubernetes check confirmed the **new image running Ready with zero restarts**. The module's INFO-level startup message is filtered by the production logging configuration, so execution of that specific hook has not been directly observed.
 
 See [integration evidence, exact limitations and lightweight PR gates](docs/INTEGRATION.md). The [licence notice audit](docs/LICENSING.md) remains unresolved pending confirmation; do not import external code assuming licensing compatibility.
 
