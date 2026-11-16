@@ -30,6 +30,13 @@ jobs:
           c++ -std="$CXX_STANDARD" -Wall -Wextra -Werror -pedantic -Isrc \
             tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
           /tmp/autonomy-policy-tests
+      - name: Compile and run enrollment lifecycle tests
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/EnrollmentStateTests.cpp -o /tmp/autonomy-enrollment-tests
+          /tmp/autonomy-enrollment-tests
       - name: Test source contract checker
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Validate scaffold

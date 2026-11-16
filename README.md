@@ -2,7 +2,7 @@
 
 A planned autonomous-world simulation module for the [AzerothCore WotLK playerbots fork](https://github.com/mod-playerbots/azerothcore-wotlk), designed to work alongside [RovxBot/mod-playerbots](https://github.com/RovxBot/mod-playerbots) and [RovxBot/mod-dungeon-clear](https://github.com/RovxBot/mod-dungeon-clear).
 
-> **Status: foundation only.** The module currently registers a disabled-by-default, inert WorldScript and ships an engine-independent population policy with tests. It does **not** yet recruit bots, protect characters from resets, run dungeons or simulate guild activity.
+> **Status: foundation and M1 contract only.** The module registers a disabled-by-default, inert WorldScript and now includes a proposed character-enrollment schema, pure two-phase lifecycle decision rules and tests. **No database adapter, runtime enrollment, reset protection or recruitment is installed.**
 
 ## Vision
 
@@ -40,16 +40,19 @@ PlayerbotAutonomy.Enable = 0
 
 The only current enabled-state effect is a startup log that says runtime features are not yet implemented; there is no active bot manipulation, even if the option is changed to `1`.
 
-### Fast, standalone policy test
+### Fast, standalone policy and enrollment tests
 
 Without an AzerothCore checkout:
 
 ```sh
-c++ -std=c++20 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
+c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Isrc tests/PopulationPolicyTests.cpp -o /tmp/autonomy-policy-tests
 /tmp/autonomy-policy-tests
+c++ -std=c++17 -Wall -Wextra -Werror -pedantic -Isrc tests/EnrollmentStateTests.cpp -o /tmp/autonomy-enrollment-tests
+/tmp/autonomy-enrollment-tests
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-This tests the **pure decision policy only**. CI also compiles it as C++17 and runs a source-only check against pinned dependency snapshots. Neither check substitutes for a full game-server build or live realm validation.
+This tests **pure decisions and static migration structure only**. CI runs the C++ tests in C++17 and C++20 and checks pinned dependency source contracts. Nothing here executes the SQL migration, connects to MySQL, installs engine hooks or substitutes for a full server test.
 
 ## Build validation and follow-up
 
@@ -64,6 +67,7 @@ See [integration evidence, exact limitations and lightweight PR gates](docs/INTE
 - [Delivery roadmap](docs/ROADMAP.md) — incrementally validated milestones.
 - [Integration verification](docs/INTEGRATION.md) — proven image build, source contract checks, deployment gate.
 - [Licensing review](docs/LICENSING.md) — observed notices and unresolved licence questions.
+- [Enrollment lifecycle and schema](docs/ENROLLMENT.md) — pending-stage crash barrier, audit and integration plan; not deployed.
 - [Issues](https://github.com/RovxBot/mod-playerbot-autonomy/issues) — implementation work and acceptance criteria.
 
 All future functionality is opt-in, measurable and recoverable by default.
