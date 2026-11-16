@@ -91,7 +91,15 @@ Paths above are an example, not a requirement to rearrange current checkouts.
 1. **Completed:** new worldserver image tag verified on the live pod; container is Ready and has zero restarts.
 2. **Remaining:** record a startup-hook observation if needed using suitably configured module and console/file logger levels; don't treat a suppressed INFO message as missing registration.
 3. **Remaining:** explicitly verify existing manual dungeon-clear, RDF, guilds, gathering, crafting and auctions remain functional. Pod health alone cannot prove gameplay compatibility.
-4. **Optional only:** on a controlled restart, test `PlayerbotAutonomy.Enable = 1` and capture the startup message at INFO level. It must manipulate no bots; restore disabled config afterward.
+4. **Historical M0-only check:** the inert foundation revision could use `PlayerbotAutonomy.Enable = 1` to observe its startup message. This does not apply to the M1 runtime candidate; enabling it changes maintenance policy and requires the separately coordinated build/pilot in [RUNTIME_ENROLLMENT.md](RUNTIME_ENROLLMENT.md).
 5. Update issue #3 with the actual observations and record any unresolved licensing/revision provenance tasks separately. Do not rerun the multi-hour build merely to capture a log message.
 
 No routine PR should trigger the prior multi-hour image build. New C++/runtime integration should instead request a separate consciously scoped full build and live test.
+
+## M1 runtime candidate
+
+[Runtime enrollment](RUNTIME_ENROLLMENT.md) documents the implemented adapter,
+transaction/cache tests, optional playerbots interface, source pins, offline-STAGE
+restriction and outstanding link/startup/pilot gates. Its tests do not extend the
+old M0 image-build evidence to the new runtime code. No full worldserver build or
+deployment is part of this change.

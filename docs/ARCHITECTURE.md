@@ -1,6 +1,6 @@
 # Architecture and safety invariants
 
-> Planned runtime design; the foundation module and pure policy rules exist, plus a not-yet-applied enrollment schema and lifecycle contract. No live enrollment or reset guards have been wired.
+> Most of this architecture remains planned. The default-off M1 enrollment adapter and optional reset guards are now a runtime candidate, with standalone/MySQL evidence and outstanding game-server gates documented in [RUNTIME_ENROLLMENT.md](RUNTIME_ENROLLMENT.md).
 
 ## Three cooperating modules
 
