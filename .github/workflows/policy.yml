@@ -37,10 +37,78 @@ jobs:
           c++ -std="$CXX_STANDARD" -Wall -Wextra -Werror -pedantic -Isrc \
             tests/EnrollmentStateTests.cpp -o /tmp/autonomy-enrollment-tests
           /tmp/autonomy-enrollment-tests
+      - name: Compile and run cache and receipt tests
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          for test in EnrollmentCacheTests EnrollmentTransitionTests; do
+            c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Isrc \
+              tests/$test.cpp src/Persistence/EnrollmentTransition.cpp -o /tmp/autonomy-runtime-unit-tests
+            /tmp/autonomy-runtime-unit-tests
+          done
+      - name: Verify missing-interface runtime stays dormant
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic \
+            -Itests/runtime_fakes -Isrc tests/EnrollmentRuntimeTests.cpp \
+            src/Persistence/EnrollmentRuntime.cpp src/Persistence/EnrollmentTransition.cpp \
+            -o /tmp/autonomy-no-provider-tests
+          /tmp/autonomy-no-provider-tests
+      - name: Checkout the pinned optional interface for controller boundary tests
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-playerbots
+          ref: 3beeabf9735766edfa24abf9032b20e8c2bb25e2
+          path: _deps/maintenance
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/Bot/RoutineMaintenancePolicy.h
+      - name: Exercise the real controller with deterministic engine and DB boundary fakes
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic \
+            -Itests/runtime_fakes -I_deps/maintenance/src/Bot -Isrc tests/EnrollmentRuntimeTests.cpp \
+            src/Persistence/EnrollmentRuntime.cpp src/Persistence/EnrollmentTransition.cpp \
+            -o /tmp/autonomy-controller-tests
+          /tmp/autonomy-controller-tests
       - name: Test source contract checker
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Validate scaffold
         run: python3 tools/verify_scaffold.py
+
+  mysql-transactions:
+    runs-on: ubuntu-latest
+    name: disposable MySQL ${{ matrix.mysql }} transactions (not a game-server test)
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['8.0', '8.4.10']
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql }}
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_DATABASE: autonomy_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install PyMySQL==1.1.2
+      - name: Execute production SQL against disposable fixtures
+        env:
+          AUTONOMY_MYSQL_HOST: 127.0.0.1
+          AUTONOMY_MYSQL_DATABASE: autonomy_test
+        run: python3 -m unittest discover -s tests -p test_enrollment_mysql.py -v
 
   integration-contracts:
     runs-on: ubuntu-latest

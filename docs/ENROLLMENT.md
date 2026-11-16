@@ -1,9 +1,10 @@
 # M1 persistent enrollment contract (issue #5)
 
-**Status:** schema migration, pure C++17 lifecycle decisions and static/standalone
-tests only. No SQL queries, cache, recruitment, retirement command, playerbots
-hooks, migrations applied to a real DB, or live persistence protection have
-been implemented. Shipping this code alone does **not** make bots persistent.
+**Status:** foundation contract retained; the follow-up adapter, cache, explicit
+console operations (offline STAGE) and transaction tests are now implemented as an unvalidated
+runtime candidate. See [RUNTIME_ENROLLMENT.md](RUNTIME_ENROLLMENT.md) for actual
+behaviour, dependency pins, test evidence and outstanding game-server gates.
+The design/next-adapter sections below describe the original foundation model.
 
 This contract is based on:
 - playerbots AzerothCore core **test-staging** source; specifically
@@ -90,7 +91,7 @@ Do **not** auto-cancel merely because a timeout passed.
 - Directing a human player, active selfbot, or bot with human master is
   forbidden. Disabled mode always defers to original playerbots behaviour.
 
-## Schema migration (not yet executed)
+## Foundation schema and runtime follow-up
 
 `data/sql/db-characters/2026_11_15_00_playerbot_autonomy_enrollment.sql`
 creates exactly two module-owned InnoDB tables in the **characters** DB:
@@ -106,13 +107,12 @@ creates exactly two module-owned InnoDB tables in the **characters** DB:
 The migration only runs `CREATE TABLE IF NOT EXISTS`. It never seeds
 existing bot characters, touches the core `characters` or `guild` tables,
 adds FKs/cascades, modifies playerbots' database, or enables the feature.
-A standalone test checks the structure and SQL file location. **That is NOT a
-live MySQL execution or a guarantee of schema compatibility with an existing
-table.** The core's updater normally tracks applied module update filenames.
-Before deployment, verify the updater sees this file and executes it in a
-throwaway MySQL 8.x database. Avoid applying an untested migration directly
-to the live realm. Ensure the image/import workflow ships module SQL and
-updates are enabled at the intended import stage.
+Static tests check the foundation shape. The follow-up migration fixes the audit
+PENDING outcome and adds runtime receipts/schema validation; both migrations now
+pass repeated execution and transactional tests in disposable MySQL 8.4.10.
+This does not prove the full core updater runs in an image or guarantee an
+arbitrary existing schema. See [runtime evidence and rollout](RUNTIME_ENROLLMENT.md).
+Ensure the image/import workflow ships module SQL and enables the intended updater.
 
 No ON DELETE CASCADE: character deletion must not erase audit history. A
 bounded reconciler must detect orphan GUIDs without repeatedly logging or
@@ -120,9 +120,11 @@ running joins on bot ticks. Mark orphan discoveries once with a stable
 request ID; quarantine/delete records only through a separately documented
 audited cleanup, never automatically treat an unknown account as filler.
 
-## Adapter/transaction recipe for the next implementation
+## Adapter/transaction invariants
 
-The following is a **requirement**, not implemented code:
+The runtime candidate implements this protocol with an offline initial STAGE
+restriction, exact receipts and a bounded cache. No automatic guild-change or
+operation/lease controller is provided; those remain future integrations.
 
 1. Initialize the enrollment cache and loaded/unknown state on the world
    thread before any persistent reset checks are enabled. Load all rows in
@@ -172,7 +174,9 @@ core; no world object reads should be made from an arbitrary DB callback.
 - **Static SQL checks (now present):** filename and discoverable path;
   exactly two `CREATE TABLE IF NOT EXISTS` InnoDB statements; primary key,
   unique request key, state/event names and no data-seeding statements.
-- **Still required with MySQL + runtime adapter:** real migration up/down
+- **Runtime coverage and remaining game-server gates:** see
+  [RUNTIME_ENROLLMENT.md](RUNTIME_ENROLLMENT.md). The original acceptance matrix
+  includes migration up/down
   compatibility, transaction rollback/failure, unique request replay, race
   handling, stale revision rejection, restart and pending recovery, orphan
   detection, account reassignment, live guild transfer/disband, manual
@@ -184,12 +188,13 @@ core; no world object reads should be made from an arbitrary DB callback.
 
 ## Deployment and rollback
 
-Do **not** enable new runtime functionality by merging this PR. Its C++ code
-is header-only and never called from `AutonomyModule.cpp`; no new toggles
-are introduced.
+The runtime candidate is called from `AutonomyModule.cpp` only when explicitly
+enabled with the matching protection capability. It remains off by default.
+Merging the foundation/runtime code does not establish game-server acceptance;
+follow [runtime rollout and rollback](RUNTIME_ENROLLMENT.md).
 
 Roll back application code by disabling `PlayerbotAutonomy.Enable` and
-reverting the code/PR. **Do not drop the two tables as a routine rollback:**
+reverting the code/PR. **Do not drop enrollment, audit or receipt tables as a routine rollback:**
 that destroys the only evidence of durable enrollment and retirement.
 Keep backups and migration history. If a future migration must be reversed,
 perform a separate reviewed procedure preserving character state and audit.
