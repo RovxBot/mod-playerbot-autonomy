@@ -11,6 +11,14 @@ bool GuildSettings::Valid() const
            CandidateBudget <= 64 && IntervalMs >= 100 && IntervalMs <= 60000 && CooldownMs >= 1000 &&
            CooldownMs <= 86400000 && ClassMask && !(ClassMask & ~0x5ffu);
 }
+std::uint32_t NextFoundingFaction(GuildSettings const& settings, std::map<std::uint32_t, GuildIntent> const& intents)
+{
+    std::uint32_t alliance = 0;
+    for (auto const& item : intents)
+        if (item.second.Faction == 0)
+            ++alliance;
+    return alliance < settings.Target * settings.AlliancePercent / 100 ? 0u : 1u;
+}
 char const* PhaseName(GuildPhase phase)
 {
     switch (phase)
@@ -164,7 +172,7 @@ void GuildDirector::Update(std::uint32_t diff)
         _last = "target_slots_reserved";
         return;
     }
-    auto faction = slot <= _settings.Target * _settings.AlliancePercent / 100 ? 0u : 1u;
+    auto faction = NextFoundingFaction(_settings, _port.Intents());
     static char const* names[] = {"Ashen Vanguard", "Amber Covenant", "Silver Horizon",  "Dawn Wardens",
                                   "Iron Accord",    "Crimson Watch",  "Silent Standard", "Twilight Assembly"};
     for (std::uint32_t n = 0; n < _settings.CandidateBudget; ++n)

@@ -39,7 +39,10 @@ reservation, logout/login, enrollment or guild write. After controlled review,
 `DryRun=0` authorizes internal founding without manual enrollment or GM/SOAP
 mutation commands. `AllowEnrollmentCommands` may remain 0. Config includes
 count, faction percentage, membership cap, class mask, candidate budget, interval
-and founding cooldown; invalid ranges disable guild work. Reload/restart impose
+and founding cooldown; invalid ranges disable guild work. Existing immutable
+intents count toward faction quotas, so increasing a balanced two-guild canary
+to eight still produces four guilds per faction. Existing guilds are never
+converted or deleted to rebalance a changed percentage. Reload/restart impose
 a fresh full cooldown. Targets below existing ownership never delete guilds.
 
 ## Founding and recovery

@@ -423,7 +423,7 @@ std::string GuildRuntime::Plan(uint32 guid, uint32 slot) const
 {
     if (!slot || slot > _director.Settings().Target)
         return "reason=invalid_slot";
-    auto faction = slot <= _director.Settings().Target * _director.Settings().AlliancePercent / 100 ? 0u : 1u;
+    auto faction = NextFoundingFaction(_director.Settings(), _intents);
     auto reason = FoundingRejection(Candidate(guid), _director.Settings(), faction);
     if (_intents.count(slot))
         reason = "slot_already_reserved";

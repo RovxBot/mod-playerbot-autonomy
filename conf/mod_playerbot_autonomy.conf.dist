@@ -29,7 +29,8 @@ PlayerbotAutonomy.GuildDirector.Enable = 0
 PlayerbotAutonomy.GuildDirector.DryRun = 1
 # 0..64 slots; quarantined/uncertain intents consume their slot until reviewed.
 PlayerbotAutonomy.GuildDirector.GuildCount = 8
-# First floor(GuildCount * percent / 100) slots Alliance; remainder Horde.
+# Target floor(GuildCount * percent / 100) Alliance intents; fill the missing
+# quota using existing immutable intents when increasing the target.
 PlayerbotAutonomy.GuildDirector.AlliancePercent = 50
 # 1..200; founders count. Over-cap managed guilds are quarantined, never trimmed.
 PlayerbotAutonomy.GuildDirector.MaxMembers = 70

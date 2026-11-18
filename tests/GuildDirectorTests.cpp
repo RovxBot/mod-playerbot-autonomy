@@ -139,6 +139,20 @@ int main()
     auto writes = port.Writes;
     port.Step(director, 100);
     assert(port.Writes == writes && port.Creates == 8);
+    Port growth;
+    GuildDirector growing(growth);
+    auto small = settings;
+    small.Target = 2;
+    growing.Configure(small);
+    growth.Step(growing, 80);
+    assert(growth.Creates == 2);
+    growing.Configure(settings);
+    growth.Step(growing, 200);
+    assert(growth.Creates == 8);
+    unsigned balanced = 0;
+    for (auto const& item : growth.Ledger)
+        balanced += item.second.Faction == 0;
+    assert(balanced == 4);  // A two-guild canary growing to eight must remain 4/4.
     // Existing human guild membership never becomes a founder; no adoption API exists.
     auto c = port.Bots.at(20);
     c.Enrollment.Guild = 1;

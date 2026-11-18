@@ -65,6 +65,7 @@ public:
     virtual std::uint32_t Create(GuildIntent const& intent) = 0;
     virtual bool Confirm(GuildIntent const& intent, EnrollmentRecord const& before) = 0;
 };
+std::uint32_t NextFoundingFaction(GuildSettings const& settings, std::map<std::uint32_t, GuildIntent> const& intents);
 char const* PhaseName(GuildPhase phase);
 std::string GuildRequestId(std::uint32_t guid, std::uint32_t scope, std::uint32_t event, std::uint64_t revision);
 std::string FoundingRejection(GuildCandidate const& candidate, GuildSettings const& settings, std::uint32_t faction);
