@@ -108,6 +108,7 @@ operator actions remain responsible for the separate guild step.
 
 ```
 autonomy status
+autonomy diagnose GUID
 autonomy stage   GUID EXPECTED_REVISION GUILD_ID REQUEST_UUID reason
 autonomy confirm GUID EXPECTED_REVISION GUILD_ID REQUEST_UUID reason
 autonomy cancel  GUID EXPECTED_REVISION 0        REQUEST_UUID reason
@@ -119,6 +120,41 @@ transition increments it. Use a new lowercase UUID for each transition. Queue
 acknowledgement is not success: verify the request's **durable receipt** log and
 wait for `autonomy status` readiness before changing guild membership. Keep the
 same UUID and identical arguments when retrying an uncertain request.
+
+`autonomy diagnose GUID` takes one positive decimal character GUID and reads only
+current world-thread facts. It works with enrollment mutations disabled and
+reports enabled/readiness/provider status, whether the autonomy cache contains
+the GUID, its IdentityValid/account/guild/state/revision, current
+`IsInRandomAccountList` membership for the account used by validation,
+`sCharacterCache` account/guild/group GUID (raw numeric value), connected Player
+and WorldSession presence, and the first failing STAGE eligibility check.
+An offline character reports WorldSession as `not_applicable`.
+Cache presence includes invalidated entries; it does not imply valid identity.
+The random-account list is the runtime authority here; SQL `account_type` alone
+does not establish membership in that list.
+
+The diagnosis and pre-commit validator share the same observations and decision
+logic. Diagnosis uses the **current cached revision**, with no request UUID,
+reason or target guild supplied. `stage_world_checks=PASS` means current
+world-thread eligibility only: it does not check command mutation opt-in, queue
+availability, a supplied revision/UUID/reason, replay, or SQL commit prerequisites
+(including saved `characters.online`, deletion, guild/group rows and CAS).
+It does not explain a historical rejection if the runtime facts have changed.
+Diagnosis issues no SQL, queues/retries no STAGE, changes no cache entry or
+counter, and writes no character, guild, group, enrollment, receipt or audit data.
+Actual asynchronous pre-commit rejections now log the request UUID, GUID, event
+and the same named rejection reason; post-commit missing receipts retain their
+existing fail-closed recovery and are never retried as writes.
+
+Diagnosis retains the console-only handler and administrator command metadata;
+all in-game sessions, including GMs, are rejected. The pinned core checks SOAP
+accounts against `SEC_ADMINISTRATOR` and authenticates RA according to
+`Ra.MinLevel` (default 3), then discards caller identity before world-thread
+dispatch. Therefore RA must admit only administrators, and diagnosis refuses
+all sessionless origins while `Ra.MinLevel < 3`, including local console/SOAP:
+the handler cannot distinguish these origins or recheck individual RA accounts.
+Keep administrator-only RA admission for the lifetime of its sessions.
+No core or dependency authorization checks are changed.
 
 - STAGE requires the character to be **offline**, a verified dedicated random-bot
   account and no group. SQL rechecks `characters.online = 0`. An already running
@@ -181,6 +217,13 @@ Local evidence for this candidate:
   with the real optional interface and also with no interface. Covers disabled
   mode, humans/selfbots/control, Pending restart, replay/conflict, guild loss,
   retirement/group refusal, failed writes, schema/cache failure and timeout/reload.
+- Diagnosis regression tests exercise every runtime validation guard, policy
+  rejections, named asynchronous reasons, and the production command handler's
+  session/admin-admission and GUID parsing checks. They compare diagnosis output
+  with actual pre-commit validation, including account 19 / guild 1 / GUID 187
+  fixtures with both random-account membership outcomes. Repeated diagnosis
+  leaves DB calls, commits, receipts, cache version/records and counters unchanged.
+  These fixtures do not establish Trela's actual runtime rejection reason.
 - Disposable MySQL 8.4.10 (nine tests): migration replay, exact SQL receipts, offline-STAGE enforcement, Pending reload,
   guild transfer/disband, no level/money changes, stale revisions/concurrency,
   audit failure/rollback, safe retirement and idempotent orphan history.

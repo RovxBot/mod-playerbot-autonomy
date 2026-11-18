@@ -3,12 +3,15 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
 using uint8 = std::uint8_t;
+using int32 = std::int32_t;
 using uint32 = std::uint32_t;
 using uint64 = std::uint64_t;
 inline bool FakeDatabaseReady = true;
@@ -110,6 +113,7 @@ enum class HighGuid
 };
 struct ObjectGuid
 {
+    using LowType = uint32;
     uint32 Value = 0;
     template <HighGuid>
     static ObjectGuid Create(uint32 guid)
@@ -117,6 +121,7 @@ struct ObjectGuid
         return {guid};
     }
     uint32 GetCounter() const { return Value; }
+    uint64 GetRawValue() const { return Value; }
     bool IsEmpty() const { return Value == 0; }
 };
 struct WorldSession
@@ -134,16 +139,19 @@ struct Player
     uint32 Guid = 42;
     uint32 Guild = 0;
     bool Grouped = false;
+    bool OriginalGrouped = false;
     bool Online = true;
     bool Selfbot = false;
     bool Human = false;
+    bool HasSession = true;
+    bool HasAI = true;
     WorldSession Session;
     PlayerbotAI AI;
     ObjectGuid GetGUID() const { return {Guid}; }
-    WorldSession* GetSession() { return &Session; }
+    WorldSession* GetSession() { return HasSession ? &Session : nullptr; }
     uint32 GetGuildId() const { return Guild; }
     bool GetGroup() const { return Grouped; }
-    bool GetOriginalGroup() const { return false; }
+    bool GetOriginalGroup() const { return OriginalGrouped; }
 };
 inline Player FakePlayer;
 namespace ObjectAccessor
@@ -155,13 +163,16 @@ inline Player* FindConnectedPlayer(ObjectGuid guid)
 }  // namespace ObjectAccessor
 struct CharacterCache
 {
-    uint32 GetCharacterAccountIdByGuid(ObjectGuid) const { return FakePlayer.Session.Account; }
-    uint32 GetCharacterGuildIdByGuid(ObjectGuid) const { return FakePlayer.Guild; }
-    ObjectGuid GetCharacterGroupGuidByGuid(ObjectGuid) const { return {FakePlayer.Grouped ? 99u : 0u}; }
+    std::optional<uint32> Account;
+    std::optional<uint32> Guild;
+    std::optional<uint32> Group;
+    uint32 GetCharacterAccountIdByGuid(ObjectGuid) const { return Account.value_or(FakePlayer.Session.Account); }
+    uint32 GetCharacterGuildIdByGuid(ObjectGuid) const { return Guild.value_or(FakePlayer.Guild); }
+    ObjectGuid GetCharacterGroupGuidByGuid(ObjectGuid) const { return {Group.value_or(FakePlayer.Grouped ? 99u : 0u)}; }
 };
 inline CharacterCache FakeCharacterCache;
 #define sCharacterCache (&FakeCharacterCache)
-#define GET_PLAYERBOT_AI(player) (&(player)->AI)
+#define GET_PLAYERBOT_AI(player) ((player)->HasAI ? &(player)->AI : nullptr)
 inline bool IsSelfBot(Player* player) { return player->Selfbot; }
 inline bool IsRealPlayer(Player* player) { return player->Human; }
 struct PlayerbotAIConfig
@@ -170,6 +181,23 @@ struct PlayerbotAIConfig
     bool IsInRandomAccountList(uint32 account) const { return Accounts.count(account); }
 };
 inline PlayerbotAIConfig sPlayerbotAIConfig;
+inline std::string FakeLastError;
+template <typename... Args>
+std::string FakeFormat(std::string format, Args const&... args)
+{
+    [[maybe_unused]] auto append = [&](auto const& value)
+    {
+        auto const at = format.find("{}");
+        if (at != std::string::npos)
+        {
+            std::ostringstream text;
+            text << value;
+            format.replace(at, 2, text.str());
+        }
+    };
+    (append(args), ...);
+    return format;
+}
+#define LOG_ERROR(category, ...) (FakeLastError = FakeFormat(__VA_ARGS__))
 #define LOG_INFO(...) ((void)0)
-#define LOG_ERROR(...) ((void)0)
 #endif

@@ -21,6 +21,54 @@ struct RuntimeCounters
     uint64 Rejected = 0;
 };
 
+enum class EnrollmentValidation
+{
+    Accept,
+    WrongThread,
+    Disabled,
+    CacheNotReady,
+    MissingMaintenance,
+    InvalidRequestId,
+    InvalidReason,
+    RevisionOverflow,
+    StageRequiresOffline,
+    MissingSession,
+    CacheMiss,
+    InvalidCacheIdentity,
+    CachedAccountMismatch,
+    RevisionMismatch,
+    CharacterAccountMismatch,
+    PolicyRejected
+};
+
+// A value snapshot only: no engine pointers, SQL, invalidation or submission.
+struct EnrollmentDiagnosis
+{
+    uint32 Guid = 0;
+    bool WorldThread = false;
+    bool Enabled = false;
+    bool Ready = false;
+    bool MaintenanceAvailable = false;
+    bool CacheFound = false;
+    EnrollmentRecord Cached;
+    uint32 CharacterAccount = 0;
+    uint32 CharacterGuild = 0;
+    uint64 CharacterGroupGuid = 0;
+    bool ConnectedPlayer = false;
+    bool SessionPresent = false;
+    bool RandomAccountChecked = false;
+    uint32 Account = 0;
+    uint32 Guild = 0;
+    EnrollmentFacts Facts;
+    EnrollmentValidation Validation = EnrollmentValidation::WrongThread;
+    EnrollmentDecision Decision = EnrollmentDecision::DenyUnknownState;
+
+    bool Passed() const { return Validation == EnrollmentValidation::Accept; }
+    char const* Reason() const;
+};
+
+std::string FormatStageDiagnosis(EnrollmentDiagnosis const& diagnosis);
+
 class EnrollmentRuntime
 {
 public:
@@ -33,9 +81,11 @@ public:
     EnrollmentCache& Cache() { return _cache; }
     RuntimeCounters const& Counters() const { return _counters; }
     bool ProtectionAvailable() const;
+    EnrollmentDiagnosis DiagnoseStage(uint32 guid) const;
+    EnrollmentDiagnosis Diagnose(TransitionRequest const& request) const;
 
 private:
-    bool Validate(TransitionRequest& request, EnrollmentRecord& before);
+    EnrollmentDiagnosis Observe(uint32 guid, EnrollmentRequest action) const;
     void LoadPage();
     void CheckSchema();
     void LookupReceipt(bool afterCommit);
