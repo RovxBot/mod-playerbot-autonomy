@@ -99,6 +99,8 @@ void GuildDirector::Quarantine(GuildIntent intent, std::string reason)
 }
 void GuildDirector::Update(std::uint32_t diff)
 {
+    if (!_port.OnWorldThread())
+        return;
     _cooldown = diff >= _cooldown ? 0 : _cooldown - diff;
     if (!_settings.Enabled)
         return;

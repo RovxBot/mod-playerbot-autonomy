@@ -26,6 +26,7 @@ public:
     std::string Audit(uint32 guild) const;
     std::string Plan(uint32 guid, uint32 slot) const;
     GuildDirector const& Director() const { return _director; }
+    bool OnWorldThread() const override { return std::this_thread::get_id() == _owner; }
     bool Ready() const override;
     std::map<uint32, GuildIntent> const& Intents() const override { return _intents; }
     bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) override;

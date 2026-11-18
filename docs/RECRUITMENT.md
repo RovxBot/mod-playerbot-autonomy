@@ -31,10 +31,12 @@ automatically adopted to satisfy it.
 ## Authorization and lifecycle
 
 The world-thread director makes decisions on behalf of an explicitly managed
-bot leader. Its internal `Recruiter().Request(guid,guild,actor)` also accepts a
+bot leader. Its world-thread-only internal `Recruiter().Request(guid,guild,actor)` also accepts a
 verified bot officer with invite rights, through the same budget and durable
 protocol. It never impersonates a player/GM, invokes chat commands or requires a
-human session. Human-managed guilds, real players, AddClass/selfbots, human masters
+human session. Map-thread callers are rejected without changing diagnostics;
+future bot-AI integrations must enqueue through the existing world-thread processor.
+Human-managed guilds, real players, AddClass/selfbots, human masters
 and active client-account sessions are excluded. Every mutation revalidates
 ownership, complete current member classification, actor rank/rights and identity.
 

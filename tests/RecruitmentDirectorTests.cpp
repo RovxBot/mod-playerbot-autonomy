@@ -131,6 +131,16 @@ int main()
     assert(r.Plan(90, 1, 1) == "no_explicit_managed_ownership");
     for (auto guid : f.Members)
         assert(f.Bots[guid].Enrollment.State == EnrollmentState::Persistent);
+    auto decision = r.LastDecision();
+    std::thread foreign(
+        [&]
+        {
+            r.Update(1000);
+            assert(!r.Request(90, 101, 1));
+            assert(r.Plan(90, 101, 1) == "wrong_world_thread");
+        });
+    foreign.join();
+    assert(r.LastDecision() == decision && f.Adds == adds && f.RecruitWrites == writes);
     // Default-off and dry run cannot reserve, log out, enroll or change membership.
     Fixture dry;
     RecruitmentDirector d(dry, dry);

@@ -277,6 +277,11 @@ GuildCandidate GuildRuntime::Candidate(uint32 lowGuid) const
 GuildView GuildRuntime::Inspect(GuildIntent const& m) const
 {
     GuildView view;
+    if (!OnWorldThread())
+    {
+        view.Reason = "wrong_world_thread";
+        return view;
+    }
     view.Guild = m.Guild;
     if (!sRandomPlayerbotMgr.DedicatedAccountSnapshotReady())
     {
@@ -386,6 +391,8 @@ bool GuildRuntime::Confirm(GuildIntent const& m, EnrollmentRecord const& before)
 }
 uint32 GuildRuntime::Create(GuildIntent const& m)
 {
+    if (!OnWorldThread())
+        return 0;
     auto recorded = _intents.find(m.Slot);
     if (recorded == _intents.end() || recorded->second.Phase != GuildPhase::Creating ||
         recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
@@ -410,6 +417,8 @@ uint32 GuildRuntime::Create(GuildIntent const& m)
 }
 std::string GuildRuntime::Audit(uint32 id) const
 {
+    if (!OnWorldThread())
+        return "reason=wrong_world_thread";
     std::ostringstream out;
     if (!id)
     {
@@ -425,6 +434,8 @@ std::string GuildRuntime::Audit(uint32 id) const
     if (!guild)
         return out.str() + " reason=missing_guild";
     out << " name=" << guild->GetName() << " members=" << guild->GetMemberCount();
+    if (!_loaded)
+        return out.str() + " management=unknown reason=ownership_snapshot_unloaded";
     for (auto const& item : _intents)
         if (item.second.Guild == id)
         {
@@ -437,6 +448,10 @@ std::string GuildRuntime::Audit(uint32 id) const
 }
 std::string GuildRuntime::Plan(uint32 guid, uint32 slot) const
 {
+    if (!OnWorldThread())
+        return "reason=wrong_world_thread";
+    if (!_loaded)
+        return "reason=ownership_snapshot_unloaded; nothing_queued";
     if (!slot || slot > _director.Settings().Target)
         return "reason=invalid_slot";
     auto faction = NextFoundingFaction(_director.Settings(), _intents);
@@ -545,7 +560,7 @@ bool GuildRuntime::PersistRecruitment(RecruitmentIntent const& next, std::option
 }
 bool GuildRuntime::AuthorizedRecruiter(GuildIntent const& m, uint32 actor) const
 {
-    if (!actor || m.Phase != GuildPhase::Managed)
+    if (!OnWorldThread() || !actor || m.Phase != GuildPhase::Managed)
         return false;
     auto* guild = sGuildMgr->GetGuildById(m.Guild);
     auto guid = ObjectGuid::Create<HighGuid::Player>(actor);
@@ -564,11 +579,15 @@ bool GuildRuntime::AuthorizedRecruiter(GuildIntent const& m, uint32 actor) const
 }
 bool GuildRuntime::IsRecruitMember(uint32 guild, uint32 guid) const
 {
+    if (!OnWorldThread())
+        return false;
     auto* target = sGuildMgr->GetGuildById(guild);
     return target && target->GetMember(ObjectGuid::Create<HighGuid::Player>(guid));
 }
 bool GuildRuntime::SubmitRecruit(RecruitmentIntent const& m, EnrollmentRecord const& before, EnrollmentRequest action)
 {
+    if (!OnWorldThread())
+        return false;
     auto managed = _intents.find(m.Slot);
     if (managed == _intents.end() || managed->second.Guild != m.Guild || !Inspect(managed->second).Safe ||
         !AuthorizedRecruiter(managed->second, m.Actor))
@@ -627,6 +646,10 @@ bool GuildRuntime::JoinRecruit(RecruitmentIntent const& m)
 }
 std::string GuildRuntime::RecruitmentPlan(uint32 guid, uint32 guild, uint32 actor) const
 {
+    if (!OnWorldThread())
+        return "reason=wrong_world_thread";
+    if (!_loaded)
+        return "reason=ownership_snapshot_unloaded; nothing_queued";
     auto reason = _recruiter.Plan(guid, guild, actor);
     auto known = _recruitments.find(guid);
     std::string history;

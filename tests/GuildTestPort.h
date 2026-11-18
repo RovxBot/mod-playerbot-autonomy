@@ -1,6 +1,7 @@
 #ifndef AUTONOMY_GUILD_TEST_PORT_H
 #define AUTONOMY_GUILD_TEST_PORT_H
 #include <cassert>
+#include <thread>
 
 #include "Guild/GuildDirector.h"
 using namespace PlayerbotAutonomy;
@@ -12,6 +13,8 @@ struct Port : GuildPort
     std::map<uint32_t, GuildIntent> Ledger;
     std::map<uint32_t, GuildCandidate> Bots;
     std::optional<GuildIntent> Queued;
+    std::thread::id Owner = std::this_thread::get_id();
+    bool OnWorldThread() const override { return std::this_thread::get_id() == Owner; }
     bool Ready() const override { return Loaded && !Queued; }
     std::map<uint32_t, GuildIntent> const& Intents() const override { return Ledger; }
     bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) override

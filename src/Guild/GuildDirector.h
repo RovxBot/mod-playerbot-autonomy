@@ -51,6 +51,7 @@ class GuildPort
 {
 public:
     virtual ~GuildPort() = default;
+    virtual bool OnWorldThread() const = 0;
     virtual bool Ready() const = 0;
     virtual std::map<std::uint32_t, GuildIntent> const& Intents() const = 0;
     virtual bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) = 0;

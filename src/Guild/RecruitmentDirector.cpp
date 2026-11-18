@@ -46,6 +46,8 @@ GuildIntent const* RecruitmentDirector::Managed(std::uint32_t guild) const
 }
 std::string RecruitmentDirector::Plan(std::uint32_t guid, std::uint32_t guild, std::uint32_t actor) const
 {
+    if (!_guilds.OnWorldThread())
+        return "wrong_world_thread";
     auto* managed = Managed(guild);
     if (!managed)
         return "no_explicit_managed_ownership";
@@ -62,6 +64,8 @@ std::string RecruitmentDirector::Plan(std::uint32_t guid, std::uint32_t guild, s
 }
 bool RecruitmentDirector::Request(std::uint32_t guid, std::uint32_t guild, std::uint32_t actor)
 {
+    if (!_guilds.OnWorldThread())
+        return false;
     if (!_settings.Enabled || _settings.DryRun || !_guilds.Ready())
     {
         _last = "activities_disabled_dry_run_or_snapshot_unready";
@@ -117,6 +121,8 @@ void RecruitmentDirector::Quarantine(RecruitmentIntent m, std::string reason)
 }
 void RecruitmentDirector::Update(std::uint32_t diff)
 {
+    if (!_guilds.OnWorldThread())
+        return;
     _cooldown = diff >= _cooldown ? 0 : _cooldown - diff;
     if (!_settings.Enabled)
         return;
