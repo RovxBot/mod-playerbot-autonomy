@@ -48,7 +48,7 @@ reassignment, or activity disable. A queued write may finish and its receipt and
 cache are reconciled even after activities stop. No automatic retirement occurs.
 
 The optional enrollment handoff requires playerbots master companion commit
-`edbd9edbd49a387bdec6c71d97f15cce5b8df4e9` on baseline
+`a3d4ed4d2803262fbc80705eac83bb3fa286ec5b` on baseline
 `08b6bd127513d7273b1fcb765e537c5a3cd813ec`. It supplies cached explicit type-1
 classification, a per-GUID login veto at ingress and asynchronous materialization,
 and a pending-login observation. Missing handoff capability disables reservations;
