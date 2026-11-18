@@ -10,7 +10,7 @@ checks prepare a candidate; they do not establish game-server acceptance.
 | --- | --- |
 | Core, read-only | mod-playerbots/azerothcore-wotlk test-staging `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6` |
 | Playerbots baseline | RovxBot/mod-playerbots master `08b6bd127513d7273b1fcb765e537c5a3cd813ec` |
-| Playerbots companion | RovxBot/mod-playerbots `rc/enrollment-handoff`, `fb09bae3700ce1cf9cb74cbb57722be8e548bcfd`, own-fork draft PR |
+| Playerbots companion | RovxBot/mod-playerbots `rc/enrollment-handoff`, `422db5a50b429db01ab481ba597b928c87b0eb98`, own-fork draft PR |
 | Dungeon-clear, unchanged | RovxBot/mod-dungeon-clear `1a336ad58debdc2ffee598e78ce216ccff35153f` |
 | Autonomy | RovxBot/mod-playerbot-autonomy `rc/guild-recruitment`; exact final SHA is captured by the manifest below and its PR head |
 
