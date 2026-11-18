@@ -76,7 +76,6 @@ void GuildRuntime::Update(uint32 diff)
     if (_enrollmentReceipts != receipts)
     {
         _enrollmentReceipts = receipts;
-        ++_snapshotEpoch;
         _needLoad = true;
         InvalidateRecruitments();
     }
@@ -430,7 +429,8 @@ std::string GuildRuntime::Audit(uint32 id) const
         if (item.second.Guild == id)
         {
             auto view = Inspect(item.second);
-            out << " phase=" << PhaseName(item.second.Phase) << " reason=" << view.Reason;
+            out << " phase=" << PhaseName(item.second.Phase) << " ownership_reason=" << item.second.Reason
+                << " reason=" << view.Reason;
             return out.str();
         }
     return out.str() + " managed=false reason=no_explicit_ownership_record; never_adopted";
@@ -628,8 +628,14 @@ bool GuildRuntime::JoinRecruit(RecruitmentIntent const& m)
 std::string GuildRuntime::RecruitmentPlan(uint32 guid, uint32 guild, uint32 actor) const
 {
     auto reason = _recruiter.Plan(guid, guild, actor);
+    auto known = _recruitments.find(guid);
+    std::string history;
+    if (known != _recruitments.end())
+        history = " phase=" + std::string(RecruitmentPhaseName(known->second.Phase)) +
+                  " recorded_reason=" + known->second.Reason +
+                  " stage_verified=" + (known->second.StageVerified ? "true" : "false");
     return "recruitment_dry_run guid=" + std::to_string(guid) + " guild=" + std::to_string(guild) +
-           " actor=" + std::to_string(actor) + " ready=" + (Ready() ? "true" : "false") +
+           " actor=" + std::to_string(actor) + history + " ready=" + (Ready() ? "true" : "false") +
            " reason=" + (reason.empty() ? "eligible" : reason) + "; nothing_queued";
 }
 }  // namespace PlayerbotAutonomy
