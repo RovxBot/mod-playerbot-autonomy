@@ -141,7 +141,14 @@ jobs:
             src/Bot/RoutineMaintenancePolicy.h
             src/Bot/AutonomyEnrollment.h
       - name: Install isolated decoder test dependencies
-        run: sudo apt-get update && sudo apt-get install -y libmysqlclient-dev libboost-dev
+        run: |
+          sudo apt-get update
+          # Hosted runners already include MySQL client development files.
+          # Do not upgrade their local mysql-server alongside our service DB.
+          if ! command -v mysql_config >/dev/null; then
+            sudo apt-get install -y --no-install-recommends libmysqlclient-dev
+          fi
+          sudo apt-get install -y --no-install-recommends libboost-dev
       - name: Execute production SQL against disposable fixtures
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
