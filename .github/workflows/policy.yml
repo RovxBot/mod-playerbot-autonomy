@@ -52,6 +52,12 @@ jobs:
         run: |
           c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/GuildDirectorTests.cpp src/Guild/GuildDirector.cpp -o /tmp/autonomy-guild-tests
           /tmp/autonomy-guild-tests
+      - name: Test recruitment controller
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/RecruitmentDirectorTests.cpp src/Guild/GuildDirector.cpp src/Guild/RecruitmentDirector.cpp -o /tmp/autonomy-recruit-tests
+          /tmp/autonomy-recruit-tests
       - name: Verify missing-interface runtime stays dormant
         env:
           CXX_STANDARD: ${{ matrix.standard }}

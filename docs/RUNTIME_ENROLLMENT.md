@@ -130,10 +130,11 @@ boundary on its own: **PlayerbotAutonomy.AllowEnrollmentCommands=1** must also
 be set deliberately by an operator before lifecycle mutations are accepted.
 This option defaults to 0, independently of the maintenance-protection switch.
 
-This is an administrative M1 lifecycle, **not an autonomous guild director**.
-There is no automatic adoption, recruitment scan, guild creation/join/leave,
-reward generation, teleport or immediate reroll. Normal guild APIs/authorized
-operator actions remain responsible for the separate guild step.
+This section describes the administrative M1 lifecycle. The new opt-in
+[managed guild director](MANAGED_GUILDS.md) and [recruitment controller](RECRUITMENT.md)
+now call the same API internally and own their trusted guild steps. No manual
+enrollment is needed for that path. Automatic adoption, reward generation,
+teleports and immediate rerolls remain excluded.
 
 ```
 autonomy status

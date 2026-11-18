@@ -2,6 +2,7 @@
 #define PLAYERBOT_AUTONOMY_GUILD_STORE_H
 #include "GuildDirector.h"
 #include "Persistence/EnrollmentStore.h"
+#include "RecruitmentDirector.h"
 namespace PlayerbotAutonomy
 {
 enum GuildStatement : uint32
@@ -11,6 +12,10 @@ enum GuildStatement : uint32
     GuildInsert,
     GuildChange,
     GuildAudit,
+    RecruitLoad,
+    RecruitInsert,
+    RecruitChange,
+    RecruitAudit,
     GuildStatementCount
 };
 class GuildConnection final : public MySQLConnection
@@ -29,6 +34,8 @@ class GuildStore final : public ModuleDatabasePool
 public:
     bool Initialize(std::string const& info);
     QueryCallback Load();
+    QueryCallback LoadRecruitments(uint32 cursor);
+    TransactionCallback SaveRecruitment(RecruitmentIntent const& intent, std::optional<RecruitmentPhase> before);
     QueryCallback AuditPage(uint32 cursor);
     TransactionCallback Save(GuildIntent const& intent, std::optional<GuildPhase> before);
 

@@ -20,7 +20,8 @@ This is the intended delivery sequence, **not a claim of completed functionality
 ## M2 — Autonomous guilds and activity ownership
 
 The [managed founding candidate](MANAGED_GUILDS.md) implements opt-in founding
-and explicit ownership; its full-server acceptance is still pending.
+and explicit ownership; the [recruitment candidate](RECRUITMENT.md) adds automated
+STAGE/guild/CONFIRM integration. Their full-server acceptance is still pending.
 
 - Safe recruiting from unguilded population into eligible bot-owned guilds.
 - Durable guild rosters, recruitment caps, activity budgets and member availability.

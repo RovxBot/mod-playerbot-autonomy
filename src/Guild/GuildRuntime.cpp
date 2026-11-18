@@ -46,7 +46,11 @@ void GuildRuntime::Start(std::string const& info)
 }
 void GuildRuntime::Stop()
 {
+    _recruiter.Configure(RecruitmentSettings{}, GuildSettings{});
     _director.Configure(GuildSettings{});
+    InvalidateRecruitments();
+    _recruitments.clear();
+    _activeRecruitments.clear();
     _loaded = false;
     _query.reset();
     _transaction.reset();
@@ -60,7 +64,7 @@ void GuildRuntime::Stop()
 bool GuildRuntime::Ready() const
 {
     return std::this_thread::get_id() == _owner && _opened && _loaded && _auditDone && !_needLoad && !_query &&
-           !_transaction && Runtime().Idle() && Runtime().ActivityEnabled() &&
+           !_transaction && _recruitLoaded && !_needRecruitLoad && Runtime().Idle() && Runtime().ActivityEnabled() &&
            sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
 }
 void GuildRuntime::Update(uint32 diff)
@@ -74,6 +78,7 @@ void GuildRuntime::Update(uint32 diff)
         _enrollmentReceipts = receipts;
         ++_snapshotEpoch;
         _needLoad = true;
+        InvalidateRecruitments();
     }
     if (!_attempted && _director.Settings().Enabled)
         Start(_info);
@@ -98,11 +103,14 @@ void GuildRuntime::Update(uint32 diff)
         {
             if (_needLoad)
                 Load();
+            else if (_needRecruitLoad)
+                LoadRecruitmentPage();
             else if (!_auditDone)
                 AuditNext();
         }
     }
     _director.Update(diff);
+    _recruiter.Update(diff);
     ++_ticks;
     auto elapsed =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
@@ -408,7 +416,9 @@ std::string GuildRuntime::Audit(uint32 id) const
     {
         out << "guild_audit loaded=" << _loaded << " startup_audit_complete=" << _auditDone
             << " existing_guilds_observed=" << _existingGuilds << " intents=" << _intents.size()
-            << " failures=" << _failures << " max_tick_us=" << _maxTickUs << " decision=" << _director.LastDecision();
+            << " failures=" << _failures << " max_tick_us=" << _maxTickUs << " recruitments=" << _recruitments.size()
+            << " active_recruitments=" << _activeRecruitments.size()
+            << " recruitment_decision=" << _recruiter.LastDecision() << " decision=" << _director.LastDecision();
         return out.str();
     }
     auto* guild = sGuildMgr->GetGuildById(id);
@@ -434,6 +444,192 @@ std::string GuildRuntime::Plan(uint32 guid, uint32 slot) const
     if (_intents.count(slot))
         reason = "slot_already_reserved";
     return "founding_dry_run guid=" + std::to_string(guid) + " slot=" + std::to_string(slot) +
+           " reason=" + (reason.empty() ? "eligible" : reason) + "; nothing_queued";
+}
+}  // namespace PlayerbotAutonomy
+
+namespace PlayerbotAutonomy
+{
+void GuildRuntime::InvalidateRecruitments()
+{
+    ++_snapshotEpoch;
+    _recruitLoaded = false;
+    _needRecruitLoad = true;
+    _recruitCursor = 0;
+    _recruitSnapshot.clear();
+}
+void GuildRuntime::LoadRecruitmentPage()
+{
+    auto epoch = _snapshotEpoch;
+    _query.emplace(_store.LoadRecruitments(_recruitCursor)
+                       .WithPreparedCallback(
+                           [this, epoch](PreparedQueryResult result)
+                           {
+                               if (epoch != _snapshotEpoch)
+                                   return;
+                               if (!result)
+                               {
+                                   ++_failures;
+                                   _retry = 5000;
+                                   return;
+                               }
+                               uint32 rows = 0;
+                               do
+                               {
+                                   auto* f = result->Fetch();
+                                   if (f[0].IsNull())
+                                       break;
+                                   RecruitmentIntent m;
+                                   m.Guid = f[0].Get<uint32>();
+                                   m.Account = f[1].Get<uint32>();
+                                   m.Guild = f[2].Get<uint32>();
+                                   m.Slot = f[3].Get<uint32>();
+                                   m.Actor = f[4].Get<uint32>();
+                                   m.StageRevision = f[5].Get<uint64>();
+                                   m.StageRequest = f[6].Get<std::string>();
+                                   m.Reason = f[8].Get<std::string>();
+                                   m.StageVerified = f[9].Get<uint32>() != 0;
+                                   auto phase = f[7].Get<std::string>();
+                                   m.Phase = RecruitmentPhase::Quarantined;
+                                   for (auto value : {RecruitmentPhase::Selected, RecruitmentPhase::Joining,
+                                                      RecruitmentPhase::Complete})
+                                       if (phase == RecruitmentPhaseName(value))
+                                           m.Phase = value;
+                                   if (!m.Guid || !m.Account || !m.Guild || !m.Actor || !m.Slot || m.Slot > 64 ||
+                                       !ValidRequestId(m.StageRequest))
+                                   {
+                                       ++_failures;
+                                       _retry = 5000;
+                                       return;
+                                   }
+                                   _recruitCursor = m.Guid;
+                                   _recruitSnapshot[m.Guid] = std::move(m);
+                                   ++rows;
+                               } while (result->NextRow());
+                               if (rows < 64)
+                               {
+                                   _recruitments = std::move(_recruitSnapshot);
+                                   _activeRecruitments.clear();
+                                   for (auto const& item : _recruitments)
+                                       if (item.second.Phase == RecruitmentPhase::Selected ||
+                                           item.second.Phase == RecruitmentPhase::Joining)
+                                           _activeRecruitments.insert(item.first);
+                                   _needRecruitLoad = false;
+                                   _recruitLoaded = true;
+                                   _recruitCursor = 0;
+                               }
+                           }));
+}
+std::optional<RecruitmentIntent> GuildRuntime::ActiveRecruitment() const
+{
+    if (_activeRecruitments.empty())
+        return std::nullopt;
+    return _recruitments.at(*_activeRecruitments.begin());
+}
+bool GuildRuntime::PersistRecruitment(RecruitmentIntent const& next, std::optional<RecruitmentPhase> before)
+{
+    if (!Ready() || !_recruiter.Settings().Enabled || _recruiter.Settings().DryRun)
+        return false;
+    _transaction.emplace(_store.SaveRecruitment(next, before));
+    _transaction->AfterComplete(
+        [this](bool success)
+        {
+            if (!success)
+            {
+                ++_failures;
+                _retry = 5000;
+            }
+            InvalidateRecruitments();
+        });
+    return true;
+}
+bool GuildRuntime::AuthorizedRecruiter(GuildIntent const& m, uint32 actor) const
+{
+    if (!actor || m.Phase != GuildPhase::Managed)
+        return false;
+    auto* guild = sGuildMgr->GetGuildById(m.Guild);
+    auto guid = ObjectGuid::Create<HighGuid::Player>(actor);
+    if (!guild || guild->GetLeaderGUID().GetCounter() != m.Founder || guild->GetName() != m.Name)
+        return false;
+    auto* member = guild->GetMember(guid);
+    if (!member || member->GetRankId() > GR_OFFICER ||
+        (guild->GetRankRights(member->GetRankId()) & GR_RIGHT_INVITE) != GR_RIGHT_INVITE)
+        return false;
+    auto account = sCharacterCache->GetCharacterAccountIdByGuid(guid);
+    if (!sRandomPlayerbotMgr.IsDedicatedRandomAccount(account) || sWorldSessionMgr->FindSession(account))
+        return false;
+    auto* player = ObjectAccessor::FindConnectedPlayer(guid);
+    return !player || (!IsRealPlayer(player) && !IsSelfBot(player) && GET_PLAYERBOT_AI(player) &&
+                       !GET_PLAYERBOT_AI(player)->HasGameClientMaster());
+}
+bool GuildRuntime::IsRecruitMember(uint32 guild, uint32 guid) const
+{
+    auto* target = sGuildMgr->GetGuildById(guild);
+    return target && target->GetMember(ObjectGuid::Create<HighGuid::Player>(guid));
+}
+bool GuildRuntime::SubmitRecruit(RecruitmentIntent const& m, EnrollmentRecord const& before, EnrollmentRequest action)
+{
+    auto managed = _intents.find(m.Slot);
+    if (managed == _intents.end() || managed->second.Guild != m.Guild || !Inspect(managed->second).Safe ||
+        !AuthorizedRecruiter(managed->second, m.Actor))
+        return false;
+    TransitionRequest request;
+    request.Guid = m.Guid;
+    request.Guild = m.Guild;
+    request.ExpectedRevision = action == EnrollmentRequest::StageBeforeGuildJoin ? m.StageRevision : before.Revision;
+    request.Action = action;
+    request.RequestId = GuildRequestId(
+        m.Guid, m.Guild, action == EnrollmentRequest::StageBeforeGuildJoin ? 0x2001 : 0x2002, request.ExpectedRevision);
+    request.Reason = "director recruitment guild " + std::to_string(m.Guild);
+    request.Director = true;
+    request.ActorGuid = m.Actor;
+    return Runtime().Submit(std::move(request));
+}
+bool GuildRuntime::StageRecruit(RecruitmentIntent const& m, EnrollmentRecord const& before)
+{
+    return SubmitRecruit(m, before, EnrollmentRequest::StageBeforeGuildJoin);
+}
+bool GuildRuntime::ConfirmRecruit(RecruitmentIntent const& m, EnrollmentRecord const& before)
+{
+    if (!m.StageVerified || !IsRecruitMember(m.Guild, m.Guid))
+        return false;
+    return SubmitRecruit(m, before, EnrollmentRequest::ConfirmAfterGuildJoin);
+}
+bool GuildRuntime::JoinRecruit(RecruitmentIntent const& m)
+{
+    if (!Ready() || _recruiter.Settings().DryRun || !_recruiter.Settings().Enabled)
+        return false;
+    auto current = _recruitments.find(m.Guid);
+    auto managed = _intents.find(m.Slot);
+    if (current == _recruitments.end() || current->second.Phase != RecruitmentPhase::Joining ||
+        !current->second.StageVerified || current->second.StageRequest != m.StageRequest || managed == _intents.end() ||
+        managed->second.Guild != m.Guild || !AuthorizedRecruiter(managed->second, m.Actor))
+        return false;
+    if (IsRecruitMember(m.Guild, m.Guid))
+    {
+        Runtime().Invalidate(m.Guid);
+        return true;
+    }
+    auto c = Candidate(m.Guid);
+    auto view = Inspect(managed->second);
+    if (!view.Safe || view.Members >= _director.Settings().MaxMembers || !c.Available || c.Online ||
+        c.Enrollment.Guild || c.Enrollment.State != EnrollmentState::Pending ||
+        c.Enrollment.Revision != m.StageRevision + 1 || c.Enrollment.Account != m.Account ||
+        !c.Enrollment.AccountIsRandomBot || c.Faction != managed->second.Faction ||
+        Runtime().Cache().Reserved() != m.Guid || !c.Class || c.Class > 11 ||
+        !(_director.Settings().ClassMask & (1u << (c.Class - 1))))
+        return false;
+    auto* guild = sGuildMgr->GetGuildById(m.Guild);
+    if (!guild || !guild->AddMember(ObjectGuid::Create<HighGuid::Player>(m.Guid)))
+        return false;
+    Runtime().Invalidate(m.Guid);
+    return true;
+}
+std::string GuildRuntime::RecruitmentPlan(uint32 guid, uint32 guild, uint32 actor) const
+{
+    auto reason = _recruiter.Plan(guid, guild, actor);
+    return "recruitment_dry_run guid=" + std::to_string(guid) + " guild=" + std::to_string(guild) +
+           " actor=" + std::to_string(actor) + " ready=" + (Ready() ? "true" : "false") +
            " reason=" + (reason.empty() ? "eligible" : reason) + "; nothing_queued";
 }
 }  // namespace PlayerbotAutonomy

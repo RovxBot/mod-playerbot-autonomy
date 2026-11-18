@@ -4,11 +4,22 @@
 #include "Persistence/EnrollmentRuntime.h"
 namespace PlayerbotAutonomy
 {
-class GuildRuntime final : public GuildPort
+class GuildRuntime final : public GuildPort, public RecruitmentPort
 {
 public:
-    GuildRuntime() : _director(*this) {}
+    GuildRuntime() : _director(*this), _recruiter(*this, *this) {}
     void Configure(GuildSettings settings);
+    void ConfigureRecruitment(RecruitmentSettings settings) { _recruiter.Configure(settings, _director.Settings()); }
+    RecruitmentDirector& Recruiter() { return _recruiter; }
+    std::map<uint32, RecruitmentIntent> const& Recruitments() const override { return _recruitments; }
+    std::optional<RecruitmentIntent> ActiveRecruitment() const override;
+    bool PersistRecruitment(RecruitmentIntent const& next, std::optional<RecruitmentPhase> before) override;
+    bool AuthorizedRecruiter(GuildIntent const& guild, uint32 actor) const override;
+    bool IsRecruitMember(uint32 guild, uint32 guid) const override;
+    bool StageRecruit(RecruitmentIntent const& intent, EnrollmentRecord const& before) override;
+    bool JoinRecruit(RecruitmentIntent const& intent) override;
+    bool ConfirmRecruit(RecruitmentIntent const& intent, EnrollmentRecord const& before) override;
+    std::string RecruitmentPlan(uint32 guid, uint32 guild, uint32 actor) const;
     void Start(std::string const& info);
     void Update(uint32 diff);
     void Stop();
@@ -32,8 +43,16 @@ public:
 private:
     void Load();
     void AuditNext();
+    void LoadRecruitmentPage();
+    void InvalidateRecruitments();
+    bool SubmitRecruit(RecruitmentIntent const&, EnrollmentRecord const&, EnrollmentRequest);
     bool Submit(GuildIntent const& intent, EnrollmentRecord const& before, EnrollmentRequest action);
     GuildDirector _director;
+    RecruitmentDirector _recruiter;
+    std::map<uint32, RecruitmentIntent> _recruitments, _recruitSnapshot;
+    std::set<uint32> _activeRecruitments;
+    bool _recruitLoaded = false, _needRecruitLoad = true;
+    uint32 _recruitCursor = 0;
     GuildStore _store;
     std::map<uint32, GuildIntent> _intents;
     std::optional<QueryCallback> _query;

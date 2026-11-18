@@ -4,7 +4,7 @@
 
 This repository will become the **autonomous-world director** for AzerothCore 3.3.5a random playerbots. It is a coordinating module, **not** another bot AI, pathfinder, profession module or dungeon-clear implementation.
 
-Current status is **foundation and M1 lifecycle contract only**. A schema migration and pure decision rules exist, but there is **no runtime database adapter, enforced reset guard or live enrollment**. No production recruitment, persistence protection, party forming, dungeon execution or PvP exists yet. Do not describe intended behaviour as implemented.
+Current source status is **M1 runtime plus a default-off guild founding/recruitment release candidate**. The operator reports M1 deployed. The new guild code has deterministic controller, disposable SQL and pinned-header evidence, but no combined server build or live acceptance yet. Party forming, dungeon execution, raids, PvP and guild economy are not implemented. Do not describe intended behaviour or source tests as production acceptance.
 
 Read `README.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/INTEGRATION.md`, `docs/LICENSING.md`, `docs/ENROLLMENT.md` and the relevant GitHub issue before changing code. Keep the design aligned with the issue's acceptance criteria.
 

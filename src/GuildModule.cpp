@@ -45,6 +45,13 @@ private:
         s.CooldownMs = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.GuildDirector.FoundingCooldownMs", 60000);
         s.ClassMask = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.GuildDirector.ClassMask", 0x5ff);
         PlayerbotAutonomy::Guilds().Configure(s);
+        PlayerbotAutonomy::RecruitmentSettings r;
+        r.Enabled = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Recruitment.Enable", false);
+        r.DryRun = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Recruitment.DryRun", true);
+        r.CooldownMs = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Recruitment.CooldownMs", 15000);
+        r.IntervalMs = s.IntervalMs;
+        r.CandidateBudget = s.CandidateBudget;
+        PlayerbotAutonomy::Guilds().ConfigureRecruitment(r);
     }
 };
 class AutonomyGuildCommands final : public CommandScript
@@ -97,6 +104,14 @@ private:
             if (!number(guid) || !guid || !number(slot) || (in >> extra))
                 return false;
             handler->SendSysMessage(PlayerbotAutonomy::Guilds().Plan(guid, slot));
+            return true;
+        }
+        if (action == "recruit-plan")
+        {
+            uint32 guild = 0, actor = 0;
+            if (!number(guid) || !guid || !number(guild) || !guild || !number(actor) || !actor || (in >> extra))
+                return false;
+            handler->SendSysMessage(PlayerbotAutonomy::Guilds().RecruitmentPlan(guid, guild, actor));
             return true;
         }
         return false;
