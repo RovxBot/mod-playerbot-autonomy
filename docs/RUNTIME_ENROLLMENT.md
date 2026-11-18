@@ -48,7 +48,7 @@ reassignment, or activity disable. A queued write may finish and its receipt and
 cache are reconciled even after activities stop. No automatic retirement occurs.
 
 The optional enrollment handoff requires playerbots master companion commit
-`fb09bae3700ce1cf9cb74cbb57722be8e548bcfd` on baseline
+`422db5a50b429db01ab481ba597b928c87b0eb98` on baseline
 `08b6bd127513d7273b1fcb765e537c5a3cd813ec`. It supplies cached explicit type-1
 classification, a per-GUID login veto at ingress and asynchronous materialization,
 and a pending-login observation. Missing handoff capability disables reservations;
@@ -60,7 +60,10 @@ from this candidate's verification.
 it can include AddClass/unassigned accounts or omit existing dedicated accounts.
 An active client account session excludes even an offline sibling character.
 Autonomy uses `IsDedicatedRandomAccount()` from the manager's explicit type-1
-assignments, which load independently of factory creation. It never authorizes an
+assignments, which load independently of factory creation. Unavailable account-type snapshots invalidate identity/protect maintenance;
+known non-dedicated accounts remain distinct. This is exposed in diagnosis as
+`dedicated_account_snapshot_unavailable` and needs a verified playerbots startup/
+configuration snapshot before new work. It never authorizes an
 account from a name prefix or calls the synchronous `IsAccountType()` on ticks.
 Diagnosis reports both broad factory membership and dedicated eligibility. The
 supplied Trela identity is covered with eligible/ineligible fixtures; live account

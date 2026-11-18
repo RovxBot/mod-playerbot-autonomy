@@ -288,6 +288,9 @@ void EnrollmentRuntime::LoadPage()
             record.IdentityValid = record.IdentityValid &&
                                    sCharacterCache->GetCharacterAccountIdByGuid(guid) == record.Account &&
                                    sCharacterCache->GetCharacterGuildIdByGuid(guid) == record.Guild;
+#ifdef AUTONOMY_HAS_MAINTENANCE_V1
+            record.IdentityValid = record.IdentityValid && sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
+#endif
             if (orphaned)
             {
                 ++_counters.Orphans;
@@ -328,6 +331,8 @@ void ValidateDiagnosis(EnrollmentDiagnosis& diagnosis, TransitionRequest const& 
             return EnrollmentValidation::CacheNotReady;
         if (!diagnosis.MaintenanceAvailable)
             return EnrollmentValidation::MissingMaintenance;
+        if (!diagnosis.AccountTypesReady)
+            return EnrollmentValidation::AccountTypesUnavailable;
         if (checkEnvelope && !ValidRequestId(request.RequestId))
             return EnrollmentValidation::InvalidRequestId;
         if (checkEnvelope && (request.Reason.empty() || request.Reason.size() > 255))
@@ -374,6 +379,8 @@ char const* EnrollmentDiagnosis::Reason() const
             return "cache_not_ready";
         case EnrollmentValidation::MissingMaintenance:
             return "maintenance_v1_unavailable";
+        case EnrollmentValidation::AccountTypesUnavailable:
+            return "dedicated_account_snapshot_unavailable";
         case EnrollmentValidation::InvalidRequestId:
             return "invalid_request_id";
         case EnrollmentValidation::InvalidReason:
@@ -455,6 +462,7 @@ EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest
     diagnosis.Facts.Current = diagnosis.Cached.State;
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
     diagnosis.FactoryRandomAccount = sPlayerbotAIConfig.IsInRandomAccountList(diagnosis.Account);
+    diagnosis.AccountTypesReady = sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
     diagnosis.RandomAccountChecked = true;
     diagnosis.Facts.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(diagnosis.Account);
     diagnosis.Facts.IsHumanControlled = sWorldSessionMgr->FindSession(diagnosis.Account) != nullptr;
@@ -502,10 +510,11 @@ std::string FormatStageDiagnosis(EnrollmentDiagnosis const& diagnosis)
     if (!diagnosis.WorldThread)
         return output.str() + " stage_world_checks=FAIL reason=" + diagnosis.Reason() + " facts=unobserved";
     output << " enabled=" << diagnosis.Enabled << " maintenance_v1=" << diagnosis.MaintenanceAvailable
-           << " ready=" << diagnosis.Ready << "\nautonomy_cache_found=" << diagnosis.CacheFound
-           << " identity_valid=" << diagnosis.Cached.IdentityValid << " cached_account=" << diagnosis.Cached.Account
-           << " cached_guild=" << diagnosis.Cached.Guild << " cached_state=" << StateName(diagnosis.Cached.State)
-           << " cached_revision=" << diagnosis.Cached.Revision << "\nrandom_account="
+           << " ready=" << diagnosis.Ready << " account_types_ready=" << diagnosis.AccountTypesReady
+           << "\nautonomy_cache_found=" << diagnosis.CacheFound << " identity_valid=" << diagnosis.Cached.IdentityValid
+           << " cached_account=" << diagnosis.Cached.Account << " cached_guild=" << diagnosis.Cached.Guild
+           << " cached_state=" << StateName(diagnosis.Cached.State) << " cached_revision=" << diagnosis.Cached.Revision
+           << "\nrandom_account="
            << (diagnosis.RandomAccountChecked ? (diagnosis.Facts.AccountIsRandomBot ? "true" : "false") : "unavailable")
            << " factory_account=" << diagnosis.FactoryRandomAccount
            << " dedicated_type1_account=" << diagnosis.Facts.AccountIsRandomBot

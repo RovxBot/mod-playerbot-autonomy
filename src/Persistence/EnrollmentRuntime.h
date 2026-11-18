@@ -29,6 +29,7 @@ enum class EnrollmentValidation
     Disabled,
     CacheNotReady,
     MissingMaintenance,
+    AccountTypesUnavailable,
     InvalidRequestId,
     InvalidReason,
     RevisionOverflow,
@@ -57,6 +58,7 @@ struct EnrollmentDiagnosis
     uint64 CharacterGroupGuid = 0;
     bool ConnectedPlayer = false;
     bool SessionPresent = false;
+    bool AccountTypesReady = false;
     bool FactoryRandomAccount = false;
     bool RandomAccountChecked = false;
     uint32 Account = 0;

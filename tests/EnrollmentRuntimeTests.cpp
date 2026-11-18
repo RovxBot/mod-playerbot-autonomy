@@ -138,6 +138,9 @@ void TestDiagnosis()
     auto stage = ReadOnlyDiagnosis(request, true);
     assert(stage.Passed() && ReadOnlyDiagnosis(request).Passed());
     assert(stage.CacheFound && stage.Cached.IdentityValid && stage.CharacterAccount == 7);
+    sRandomPlayerbotMgr.SnapshotReady = false;
+    Rejected(request, "dedicated_account_snapshot_unavailable");
+    sRandomPlayerbotMgr.SnapshotReady = true;
     FakeClientAccountSession = true;
     Rejected(request, "human_or_selfbot_control");
     FakeClientAccountSession = false;
@@ -424,6 +427,11 @@ int main()
     assert(!runtime.DiagnoseStage(42).Facts.AccountIsRandomBot);
     assert(runtime.DiagnoseStage(42).FactoryRandomAccount);
     sRandomPlayerbotMgr.ExcludedAccounts.clear();
+    sPlayerbotAIConfig.Accounts.erase(7);
+    sRandomPlayerbotMgr.ExtraDedicatedAccounts.insert(7);
+    assert(runtime.DiagnoseStage(42).Facts.AccountIsRandomBot && !runtime.DiagnoseStage(42).FactoryRandomAccount);
+    sRandomPlayerbotMgr.ExtraDedicatedAccounts.clear();
+    sPlayerbotAIConfig.Accounts.insert(7);
 #ifdef PLAYERBOTS_AUTONOMY_ENROLLMENT_H
     FakePlayer.Online = false;
     assert(runtime.Reserve(42));
@@ -521,6 +529,11 @@ int main()
     assert(runtime.Cache().ShouldBlock(42));
     Reload();
     assert(runtime.Cache().ShouldBlock(42));
+    sRandomPlayerbotMgr.SnapshotReady = false;
+    Reload();
+    assert(!runtime.Cache().Get(42).IdentityValid && runtime.Cache().ShouldBlock(42));
+    sRandomPlayerbotMgr.SnapshotReady = true;
+    Reload();
     // Replaying STAGE after CONFIRM must leave the newer cache state intact.
     assert(runtime.Submit(request));
     Pump();

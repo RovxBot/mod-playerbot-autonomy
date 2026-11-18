@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: fb09bae3700ce1cf9cb74cbb57722be8e548bcfd
+          ref: 422db5a50b429db01ab481ba597b928c87b0eb98
           path: _deps/maintenance
           persist-credentials: false
           sparse-checkout-cone-mode: false
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: fb09bae3700ce1cf9cb74cbb57722be8e548bcfd
+          ref: 422db5a50b429db01ab481ba597b928c87b0eb98
           path: _deps/playerbots
           persist-credentials: false
           sparse-checkout-cone-mode: false

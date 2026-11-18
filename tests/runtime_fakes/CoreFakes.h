@@ -206,10 +206,14 @@ struct PlayerbotHolder
 };
 struct RandomPlayerbotMgr : PlayerbotHolder
 {
+    bool SnapshotReady = true;
+    std::unordered_set<uint32> ExtraDedicatedAccounts;
     std::unordered_set<uint32> ExcludedAccounts;
+    bool DedicatedAccountSnapshotReady() const { return SnapshotReady; }
     bool IsDedicatedRandomAccount(uint32 id) const
     {
-        return sPlayerbotAIConfig.Accounts.count(id) && !ExcludedAccounts.count(id);
+        return SnapshotReady && (sPlayerbotAIConfig.Accounts.count(id) || ExtraDedicatedAccounts.count(id)) &&
+               !ExcludedAccounts.count(id);
     }
     Player* GetPlayerBot(ObjectGuid guid) { return ObjectAccessor::FindConnectedPlayer(guid); }
     void LogoutPlayerBot(ObjectGuid)
