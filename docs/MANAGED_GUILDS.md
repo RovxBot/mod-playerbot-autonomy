@@ -7,7 +7,8 @@ and pinned-header evidence. No server build, gameplay or deployment was run.
 The world-thread GuildDirector reserves up to eight **new managed guilds** by
 default, four Alliance and four Horde, with at most 70 members including each
 founder. This is a managed-guild target, not a limit on existing realm guilds.
-Existing guilds are audited in indexed one-guild pages before founding starts.
+Existing guilds are audited in indexed one-guild pages before founding starts. Unavailable account-type snapshots halt guild actions
+without changing ownership; they are not treated as human or filler evidence.
 They are never deleted, disbanded or adopted. Git Commit and Bangerzoids remain
 unmanaged. Ownership comes from durable director intent and confirmed creation,
 not a leader account or name. External membership, leader or name changes can
@@ -16,7 +17,7 @@ quarantine governance; character protection remains intact.
 ## Activation and dependency order
 
 Use core test-staging `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6` and playerbots
-master companion `fb09bae3700ce1cf9cb74cbb57722be8e548bcfd` (separate owner-fork PR).
+master companion `422db5a50b429db01ab481ba597b928c87b0eb98` (separate owner-fork PR).
 Keep dungeon-clear unchanged. Autonomy registers M1 protection before the guild
 script. Guild work waits for complete M1 and ownership snapshots and the startup
 existing-guild audit. Actual combined script/include/link order remains a manual

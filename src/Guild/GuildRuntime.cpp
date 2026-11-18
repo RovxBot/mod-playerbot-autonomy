@@ -60,7 +60,8 @@ void GuildRuntime::Stop()
 bool GuildRuntime::Ready() const
 {
     return std::this_thread::get_id() == _owner && _opened && _loaded && _auditDone && !_needLoad && !_query &&
-           !_transaction && Runtime().Idle() && Runtime().ActivityEnabled();
+           !_transaction && Runtime().Idle() && Runtime().ActivityEnabled() &&
+           sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
 }
 void GuildRuntime::Update(uint32 diff)
 {
@@ -270,6 +271,11 @@ GuildView GuildRuntime::Inspect(GuildIntent const& m) const
 {
     GuildView view;
     view.Guild = m.Guild;
+    if (!sRandomPlayerbotMgr.DedicatedAccountSnapshotReady())
+    {
+        view.Reason = "dedicated_account_snapshot_unavailable";
+        return view;
+    }
     auto recorded = _intents.find(m.Slot);
     if (recorded == _intents.end() || recorded->second.Phase != m.Phase || recorded->second.Guild != m.Guild ||
         recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
