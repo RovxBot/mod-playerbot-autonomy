@@ -115,9 +115,10 @@ has not been deployed. Trela's historical STAGE rejection remains unverified.
 
 Full build/link, actual startup/provider ordering, engine async save/login/guild
 persistence timing, real progression/restart canary and realm load remain manual
-gates. Current live account/session classification for Trela is unknown. The
-playerbots promotion-policy check needs maintainer disposition for master-target
-PRs. License/distribution questions tracked in #3 remain unresolved; no large
+gates. Current live account/session classification for Trela is unknown. Playerbots Actions is currently disabled: the standalone dispatch was rejected
+with HTTP 422 and its PR has no check runs. Local checks are recorded separately;
+no Actions setting was changed. Its promotion-policy check also needs maintainer
+disposition for master-target PRs if Actions is re-enabled. License/distribution questions tracked in #3 remain unresolved; no large
 external implementation or license choice is imported here. Issues #5, #6, #13
 and #17 stay open until their actual acceptance gates are met. A successful cheap
 test run is not grounds for closing them or enabling the realm automatically.
