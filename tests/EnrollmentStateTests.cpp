@@ -227,6 +227,15 @@ static_assert(TestTwoPhaseEnrollment(), "staged -> enrolled -> retired must be e
 static_assert(TestFailedRecruitment(), "incomplete enrollment must be safely cancelable");
 static_assert(TestDeniedTransitions(), "unauthorized, active and unsafe writes must be rejected");
 static_assert(TestMaintenanceSnapshotPolicy(), "unknown and pending must fail closed when active");
+static_assert(ValidEnrollmentRevision(EnrollmentState::Absent, 0));
+static_assert(!ValidEnrollmentRevision(EnrollmentState::Absent, 576461298018222128ULL));
+static_assert(!ValidEnrollmentRevision(EnrollmentState::Unknown, 0));
+static_assert(!ValidEnrollmentRevision(EnrollmentState::Pending, 0));
+static_assert(!ValidEnrollmentRevision(EnrollmentState::Persistent, 0));
+static_assert(!ValidEnrollmentRevision(EnrollmentState::Retired, 0));
+static_assert(ValidEnrollmentRevision(EnrollmentState::Pending, 1));
+static_assert(ValidEnrollmentRevision(EnrollmentState::Persistent, 9007199254740993ULL));
+static_assert(ValidEnrollmentRevision(EnrollmentState::Retired, 3));
 
 int main()
 {

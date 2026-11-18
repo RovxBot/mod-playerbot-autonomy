@@ -13,11 +13,16 @@ SELECT version FROM playerbot_autonomy_runtime_schema WHERE version = 1
 
 // LEFT JOIN to a sentinel distinguishes an empty healthy page from SQL failure.
 // The bounded union retains deleted-character enrollment rows for reconciliation.
+// Both COALESCE arguments must be unsigned BIGINT: mixing BIGINT UNSIGNED
+// with signed literal 0 produces NEWDECIMAL on MySQL 8.0. Core's prepared
+// Field::Get<uint64>() reads binary integer bytes, not decimal text.
+// Nullable INT columns remain native INT; Field maps SQL NULL to zero.
 inline constexpr char Page[] = R"SQL(
 SELECT p.* FROM (SELECT 1) sentinel LEFT JOIN (
- SELECT ids.guid, c.account, COALESCE(g.guildid, 0) guildid,
-        e.account_id, COALESCE(e.state, 'ABSENT') state, COALESCE(e.revision, 0) revision,
-        COALESCE(e.guild_id_at_enrollment, 0) enrolled_guild,
+ SELECT ids.guid, c.account, g.guildid,
+        e.account_id, COALESCE(e.state, 'ABSENT') state,
+        COALESCE(e.revision, CAST(0 AS UNSIGNED)) revision,
+        e.guild_id_at_enrollment enrolled_guild,
         c.deleteDate
  FROM (
   SELECT guid FROM (
@@ -35,7 +40,7 @@ SELECT p.* FROM (SELECT 1) sentinel LEFT JOIN (
 
 inline constexpr char Receipt[] = R"SQL(
 SELECT a.character_guid, a.account_id, a.event, a.state_before, a.state_after,
-       COALESCE(a.guild_id, 0), a.actor_kind, COALESCE(a.actor_guid, 0), a.reason,
+       a.guild_id, a.actor_kind, a.actor_guid, a.reason,
        r.expected_revision, r.resulting_revision
 FROM (SELECT 1) sentinel
 LEFT JOIN playerbot_autonomy_enrollment_audit a ON a.request_id = ?

@@ -276,6 +276,15 @@ void EnrollmentRuntime::LoadPage()
             record.Guild = fields[2].Get<uint32>();
             record.State = ParseState(fields[4].Get<std::string>());
             record.Revision = fields[5].Get<uint64>();
+            if (fields[5].IsNull() || !ValidEnrollmentRevision(record.State, record.Revision) ||
+                (record.State == EnrollmentState::Absent) != fields[3].IsNull())
+            {
+                LOG_ERROR("module", "autonomy enrollment: invalid snapshot character={} state={} revision={}",
+                          record.Guid, StateName(record.State), record.Revision);
+                _cache.Invalidate(record.Guid);
+                Fail();
+                return;
+            }
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
             record.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(record.Account);
 #endif

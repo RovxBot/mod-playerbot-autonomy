@@ -16,6 +16,9 @@ using uint32 = std::uint32_t;
 using uint64 = std::uint64_t;
 inline bool FakeDatabaseReady = true;
 inline unsigned FakeDatabaseCalls = 0;
+#ifdef AUTONOMY_PREPARED_MYSQL
+#include "PreparedMySQLAdapter.h"
+#else
 class Field
 {
 public:
@@ -28,6 +31,8 @@ public:
     template <class T>
     T Get() const
     {
+        if (IsNull())
+            return T{};
         if constexpr (std::is_same_v<T, std::string>)
             return std::get<std::string>(Data);
         else
@@ -107,6 +112,7 @@ protected:
 };
 template <class T>
 class PreparedStatement;
+#endif
 enum class HighGuid
 {
     Player

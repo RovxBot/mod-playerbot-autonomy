@@ -423,6 +423,28 @@ int main()
     assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::LegacyGuildAssignment));
     assert(!Maintenance::ShouldBlockRoutineMaintenance(0, Maintenance::Action::AccountDeletion));
     TestDiagnosis();
+    for (auto const invalid : {EnrollmentRecord{42, 7, 0, 576461298018222128ULL, EnrollmentState::Absent},
+                               EnrollmentRecord{42, 7, 0, 0, EnrollmentState::Pending},
+                               EnrollmentRecord{42, 7, 0, 0, EnrollmentState::Persistent},
+                               EnrollmentRecord{42, 7, 0, 0, EnrollmentState::Retired},
+                               EnrollmentRecord{42, 7, 0, 1, EnrollmentState::Unknown}})
+    {
+        auto const saved = durable;
+        durable = invalid;
+        runtime.Configure(true);
+        Pump();
+        assert(!runtime.Cache().Ready() && runtime.Cache().ShouldBlock(42));
+        assert(!runtime.DiagnoseStage(42).Passed());
+        assert(!runtime.Submit(Request(EnrollmentRequest::StageBeforeGuildJoin, invalid.Revision, '8')));
+        runtime.Configure(false);
+        assert(runtime.Cache().ShouldBlock(42));
+        durable = saved;
+        runtime.Stop();
+        runtime.Configure(true);
+        runtime.Start("throwaway");
+        Pump();
+        assert(runtime.Cache().Ready() && !runtime.Cache().ShouldBlock(42));
+    }
     sRandomPlayerbotMgr.ExcludedAccounts.insert(7);  // AddClass/human pool member, still in broad factory list.
     assert(!runtime.DiagnoseStage(42).Facts.AccountIsRandomBot);
     assert(runtime.DiagnoseStage(42).FactoryRandomAccount);
