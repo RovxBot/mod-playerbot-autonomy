@@ -41,6 +41,7 @@ private:
     bool _opened = false, _attempted = false, _loaded = false, _auditDone = false, _needLoad = true;
     uint32 _auditCursor = 0, _existingGuilds = 0, _queryAge = 0, _retry = 0;
     uint64 _enrollmentReceipts = 0;
+    uint64 _snapshotEpoch = 0;
     uint64 _failures = 0, _ticks = 0, _maxTickUs = 0;
     std::thread::id _owner;
     std::string _info;

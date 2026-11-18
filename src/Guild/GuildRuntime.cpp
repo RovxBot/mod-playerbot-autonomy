@@ -71,6 +71,7 @@ void GuildRuntime::Update(uint32 diff)
     if (_enrollmentReceipts != receipts)
     {
         _enrollmentReceipts = receipts;
+        ++_snapshotEpoch;
         _needLoad = true;
     }
     if (!_attempted && _director.Settings().Enabled)
@@ -108,8 +109,9 @@ void GuildRuntime::Update(uint32 diff)
 }
 void GuildRuntime::Load()
 {
+    auto epoch = _snapshotEpoch;
     _query.emplace(_store.Load().WithPreparedCallback(
-        [this](PreparedQueryResult result)
+        [this, epoch](PreparedQueryResult result)
         {
             if (!result)
             {
@@ -118,6 +120,8 @@ void GuildRuntime::Load()
                 ++_failures;
                 return;
             }
+            if (epoch != _snapshotEpoch)
+                return;
             std::map<uint32, GuildIntent> intents;
             do
             {
@@ -266,6 +270,15 @@ GuildView GuildRuntime::Inspect(GuildIntent const& m) const
 {
     GuildView view;
     view.Guild = m.Guild;
+    auto recorded = _intents.find(m.Slot);
+    if (recorded == _intents.end() || recorded->second.Phase != m.Phase || recorded->second.Guild != m.Guild ||
+        recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
+        recorded->second.Name != m.Name || recorded->second.StageRequest != m.StageRequest ||
+        !recorded->second.StageVerified)
+    {
+        view.Reason = "no_verified_explicit_ownership";
+        return view;
+    }
     auto* guild = sGuildMgr->GetGuildById(m.Guild);
     if (!guild)
     {
@@ -360,10 +373,17 @@ bool GuildRuntime::Confirm(GuildIntent const& m, EnrollmentRecord const& before)
 }
 uint32 GuildRuntime::Create(GuildIntent const& m)
 {
+    auto recorded = _intents.find(m.Slot);
+    if (recorded == _intents.end() || recorded->second.Phase != GuildPhase::Creating ||
+        recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
+        recorded->second.Name != m.Name || recorded->second.StageRequest != m.StageRequest ||
+        !recorded->second.StageVerified)
+        return 0;
     auto c = Candidate(m.Founder);
     if (!Ready() || _director.Settings().DryRun || m.Phase != GuildPhase::Creating || !c.Available || !c.Online ||
         c.Enrollment.State != EnrollmentState::Pending || c.Enrollment.Guild || !m.StageVerified ||
-        !c.Enrollment.AccountIsRandomBot || c.Enrollment.Account != m.Account || c.Faction != m.Faction ||
+        !c.Enrollment.AccountIsRandomBot || c.Enrollment.Account != m.Account || c.Faction != m.Faction || !c.Class ||
+        c.Class > 11 || !(_director.Settings().ClassMask & (1u << (c.Class - 1))) ||
         !ObjectMgr::IsValidCharterName(m.Name) || sGuildMgr->GetGuildByName(m.Name))
         return 0;
     auto guild = std::make_unique<Guild>();
