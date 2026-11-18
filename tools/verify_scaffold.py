@@ -4,6 +4,11 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 required = [
+    "data/sql/db-characters/2026_11_18_00_playerbot_autonomy_guild.sql",
+    "src/GuildModule.cpp",
+    "src/Guild/GuildDirector.cpp",
+    "src/Guild/GuildRuntime.cpp",
+    "src/Guild/GuildStore.cpp",
     "AGENTS.md",
     "README.md",
     "CMakeLists.txt",
