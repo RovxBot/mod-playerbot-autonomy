@@ -164,8 +164,11 @@ void EnrollmentRuntime::Update(uint32 diff)
     if (_cache.Reserved())
     {
         _reservationAge += diff;
-        if (_reservationAge >= 120000 && !_request && !_transaction)
-            Release(_cache.Reserved());  // Durable Pending/unknown protection survives transient expiry.
+        if (_reservationAge >= 120000)
+        {
+            ++_counters.ExpiredReservations;
+            Release(_cache.Reserved());
+        }  // Durable Pending/unknown protection survives transient expiry.
     }
     if (_cache.Enabled() && !ProtectionAvailable())
         FailStopWithoutProtection("maintenance provider was lost while autonomy remained enabled");

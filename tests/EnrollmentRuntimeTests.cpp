@@ -82,7 +82,8 @@ void Pump(unsigned ticks = 20)
 auto Counts()
 {
     auto const& c = Runtime().Counters();
-    return std::make_tuple(c.Pages, c.Rows, c.Pending, c.Orphans, c.Failures, c.Committed, c.Replayed, c.Rejected);
+    return std::make_tuple(c.Pages, c.Rows, c.Pending, c.Orphans, c.Failures, c.Committed, c.Replayed, c.Rejected,
+                           c.ExpiredReservations);
 }
 auto Record(EnrollmentRecord const& r)
 {
@@ -456,6 +457,9 @@ int main()
     FakePlayer.Human = FakePlayer.Selfbot = FakePlayer.AI.HumanMaster = false;
     sPlayerbotAIConfig.Accounts.insert(7);
     FakePlayer.Online = false;
+#ifdef PLAYERBOTS_AUTONOMY_ENROLLMENT_H
+    assert(runtime.Reserve(42));
+#endif
     assert(runtime.Submit(request));
     // A read-only diagnosis may pass while the queue is busy. It must neither
     // replace the queued request nor issue/retry any database work.

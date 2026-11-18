@@ -19,6 +19,7 @@ struct RuntimeCounters
     uint64 Committed = 0;
     uint64 Replayed = 0;
     uint64 Rejected = 0;
+    uint64 ExpiredReservations = 0;
 };
 
 enum class EnrollmentValidation
