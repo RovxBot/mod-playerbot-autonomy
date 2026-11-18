@@ -193,8 +193,8 @@ enabled with the matching protection capability. It remains off by default.
 Merging the foundation/runtime code does not establish game-server acceptance;
 follow [runtime rollout and rollback](RUNTIME_ENROLLMENT.md).
 
-Roll back application code by disabling `PlayerbotAutonomy.Enable` and
-reverting the code/PR. **Do not drop enrollment, audit or receipt tables as a routine rollback:**
-that destroys the only evidence of durable enrollment and retirement.
-Keep backups and migration history. If a future migration must be reversed,
-perform a separate reviewed procedure preserving character state and audit.
+Stop new work with `PlayerbotAutonomy.Enable=0`; the persistence guard remains
+active, including across restart. Preserve all enrollment, audit and receipt
+tables. Do not revert to an unprotected binary or remove this module while
+Pending/Persistent rows exist. Keep the realm stopped until a protection-capable
+binary is available. See [runtime rollback](RUNTIME_ENROLLMENT.md).

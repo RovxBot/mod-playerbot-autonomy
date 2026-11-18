@@ -26,7 +26,7 @@ def main() -> int:
     autonomy = Path(__file__).resolve().parents[1]
     headers = sorted({p.parent for root in (core / "src", playerbots / "src") for p in root.rglob("*.h")})
     includes = (
-        [args.boost_include, args.mysql_include]
+        [args.boost_include, args.mysql_include, autonomy / "src"]
         + [
             core / path
             for path in (
@@ -45,6 +45,11 @@ def main() -> int:
             autonomy / path
             for path in (
                 "src/AutonomyModule.cpp",
+                "src/GuildModule.cpp",
+                "src/Guild/GuildDirector.cpp",
+                "src/Guild/RecruitmentDirector.cpp",
+                "src/Guild/GuildStore.cpp",
+                "src/Guild/GuildRuntime.cpp",
                 "src/Persistence/EnrollmentStore.cpp",
                 "src/Persistence/EnrollmentRuntime.cpp",
                 "src/Persistence/EnrollmentTransition.cpp",

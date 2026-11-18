@@ -83,7 +83,7 @@ inline constexpr char Audit[] = R"SQL(
 INSERT INTO playerbot_autonomy_enrollment_audit
  (request_id, character_guid, account_id, event, state_before, state_after,
   guild_id, actor_kind, actor_guid, reason)
-VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, 0), 'AUTHORIZED_ADMIN', NULL, ?)
+VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, 0), ?, NULLIF(?, 0), ?)
 )SQL";
 
 inline constexpr char Orphan[] = R"SQL(

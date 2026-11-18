@@ -103,3 +103,9 @@ transaction/cache tests, optional playerbots interface, source pins, offline-STA
 restriction and outstanding link/startup/pilot gates. Its tests do not extend the
 old M0 image-build evidence to the new runtime code. No full worldserver build or
 deployment is part of this change.
+
+## Next release candidate
+
+The [manual candidate checklist](RELEASE_CANDIDATE.md) records the new M1 safety,
+explicit guild ownership and automatic recruitment source set, migrations and
+remaining combined-server gates. No build/deployment is triggered by these PRs.

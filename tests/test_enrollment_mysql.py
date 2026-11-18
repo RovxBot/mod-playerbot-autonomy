@@ -105,6 +105,8 @@ class EnrollmentMySQLTests(unittest.TestCase):
         connection=None,
         crash=False,
         fail_audit=False,
+        actor="AUTHORIZED_ADMIN",
+        actor_guid=0,
     ):
         connection = connection or self.connection
         request = request or str(uuid.uuid4())
@@ -138,7 +140,7 @@ class EnrollmentMySQLTests(unittest.TestCase):
                 self.execute(
                     cur,
                     "Audit",
-                    (request, guid, account, "INVALID" if fail_audit else event, before, after, guild, reason),
+                    (request, guid, account, "INVALID" if fail_audit else event, before, after, guild, actor, actor_guid, reason),
                 )
             if crash:
                 connection.close()

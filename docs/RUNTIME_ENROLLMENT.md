@@ -38,23 +38,52 @@ installed during script registration, before world
 initialization/configured bot factories. Until the cache loads, unknown candidates
 are vetoed. Verify this ordering in the integrated server before enabling.
 
-`PlayerbotAutonomy.Enable = 0` remains the default: disabled startup opens no
-enrollment DB connection and accepts no transitions, guild hooks with effects,
-or maintenance provider. A pool opened during an enabled session is retained
-until shutdown, while disabled mode schedules no new SQL. A reload to 0
-removes the provider immediately and prevents new work. An already submitted SQL
-transaction may finish; its history is retained. **Do not disable or restart
-with Enable=0 while any Pending/Persistent character exists:** current reload
-semantics unregister the callback, restoring destructive filler maintenance.
-Safely retiring all enrolled bots or stopping the realm before maintenance is
-required before operator rollback. This remains an explicit release gate. Re-enable rebuilds readiness.
-An initial pool-open/prepare failure requires a config reload or restart to retry; failures
-on established connections/schema/page queries retry with a five-second backoff.
+`PlayerbotAutonomy.Enable = 0` stops activities and new transitions. **Protection
+stays active**, on reload and on restart. This module now always requires the M1
+schema and maintenance provider. Until the cache loads, unknown candidates are
+blocked; schema/DB failures remain blocked. Known unowned filler uses legacy
+maintenance and automatic guild placement while activities are off. Existing
+Pending/Persistent characters stay protected even after guild loss, account
+reassignment, or activity disable. A queued write may finish and its receipt and
+cache are reconciled even after activities stop. No automatic retirement occurs.
 
-Disabling intentionally restores legacy maintenance, including for enrolled bots.
-For rollback of an enabled pilot, first pause destructive random maintenance or
-stop the realm, preserve all enrollment/audit/receipt tables, then revert code.
-Dropping tables, deleting history or retiring every bot is not a rollback.
+The optional enrollment handoff requires playerbots master companion commit
+`422db5a50b429db01ab481ba597b928c87b0eb98` on baseline
+`08b6bd127513d7273b1fcb765e537c5a3cd813ec`. It supplies cached explicit type-1
+classification, a per-GUID login veto at ingress and asynchronous materialization,
+and a pending-login observation. Missing handoff capability disables reservations;
+missing maintenance capability aborts even with activities off. No full build or
+deployment was run here. The user reports M1 deployed; that report is distinct
+from this candidate's verification.
+
+`RandomBotAccounts` is filled by factory character creation and is a broad pool;
+it can include AddClass/unassigned accounts or omit existing dedicated accounts.
+An active client account session excludes even an offline sibling character.
+Autonomy uses `IsDedicatedRandomAccount()` from the manager's explicit type-1
+assignments, which load independently of factory creation. Unavailable account-type snapshots invalidate identity/protect maintenance;
+known non-dedicated accounts remain distinct. This is exposed in diagnosis as
+`dedicated_account_snapshot_unavailable` and needs a verified playerbots startup/
+configuration snapshot before new work. It never authorizes an
+account from a name prefix or calls the synchronous `IsAccountType()` on ticks.
+Diagnosis reports both broad factory membership and dedicated eligibility. The
+supplied Trela identity is covered with eligible/ineligible fixtures; live account
+assignment, online state and historical rejection remain unverified.
+
+A reservation holds one GUID for at most 120 seconds, vetoes competing bot logins
+and maintenance, waits for in-flight login cleanup, and uses normal
+`LogoutPlayerBot` save/logout before offline STAGE. No code writes
+`characters.online`. Handoff to ordinary bot login is possible only after a
+protected, durably loaded Pending record. Reservation expiry releases only
+transient exclusion, never durable protection. On shutdown map workers stop before
+the pool drains; provider lifetime continues until process exit.
+
+Rollback: stop activities with Enable=0 and retain this protection revision and
+all enrollment/audit/receipt tables. A code rollback to a revision that removes
+protection is unsafe with Pending/Persistent rows: keep worldserver stopped until
+compatible protection is restored. There is deliberately no configuration bypass
+for existing durable protection. Initial DB open failure needs reload/restart;
+established schema/page failures retry with backoff. Runtime disable cannot prove
+that removing the module or downgrading an external binary is safe.
 
 ## SQL and transactional boundary
 
@@ -101,13 +130,15 @@ boundary on its own: **PlayerbotAutonomy.AllowEnrollmentCommands=1** must also
 be set deliberately by an operator before lifecycle mutations are accepted.
 This option defaults to 0, independently of the maintenance-protection switch.
 
-This is an administrative M1 lifecycle, **not an autonomous guild director**.
-There is no automatic adoption, recruitment scan, guild creation/join/leave,
-reward generation, teleport or immediate reroll. Normal guild APIs/authorized
-operator actions remain responsible for the separate guild step.
+This section describes the administrative M1 lifecycle. The new opt-in
+[managed guild director](MANAGED_GUILDS.md) and [recruitment controller](RECRUITMENT.md)
+now call the same API internally and own their trusted guild steps. No manual
+enrollment is needed for that path. Automatic adoption, reward generation,
+teleports and immediate rerolls remain excluded.
 
 ```
 autonomy status
+autonomy diagnose GUID
 autonomy stage   GUID EXPECTED_REVISION GUILD_ID REQUEST_UUID reason
 autonomy confirm GUID EXPECTED_REVISION GUILD_ID REQUEST_UUID reason
 autonomy cancel  GUID EXPECTED_REVISION 0        REQUEST_UUID reason
@@ -119,6 +150,41 @@ transition increments it. Use a new lowercase UUID for each transition. Queue
 acknowledgement is not success: verify the request's **durable receipt** log and
 wait for `autonomy status` readiness before changing guild membership. Keep the
 same UUID and identical arguments when retrying an uncertain request.
+
+`autonomy diagnose GUID` takes one positive decimal character GUID and reads only
+current world-thread facts. It works with enrollment mutations disabled and
+reports enabled/readiness/provider status, whether the autonomy cache contains
+the GUID, its IdentityValid/account/guild/state/revision, current
+`IsInRandomAccountList` membership for the account used by validation,
+`sCharacterCache` account/guild/group GUID (raw numeric value), connected Player
+and WorldSession presence, and the first failing STAGE eligibility check.
+An offline character reports WorldSession as `not_applicable`.
+Cache presence includes invalidated entries; it does not imply valid identity.
+Dedicated type-1 assignments are the runtime authority; broad factory membership
+is reported separately and is not an enrollment eligibility proof.
+
+The diagnosis and pre-commit validator share the same observations and decision
+logic. Diagnosis uses the **current cached revision**, with no request UUID,
+reason or target guild supplied. `stage_world_checks=PASS` means current
+world-thread eligibility only: it does not check command mutation opt-in, queue
+availability, a supplied revision/UUID/reason, replay, or SQL commit prerequisites
+(including saved `characters.online`, deletion, guild/group rows and CAS).
+It does not explain a historical rejection if the runtime facts have changed.
+Diagnosis issues no SQL, queues/retries no STAGE, changes no cache entry or
+counter, and writes no character, guild, group, enrollment, receipt or audit data.
+Actual asynchronous pre-commit rejections now log the request UUID, GUID, event
+and the same named rejection reason; post-commit missing receipts retain their
+existing fail-closed recovery and are never retried as writes.
+
+Diagnosis retains the console-only handler and administrator command metadata;
+all in-game sessions, including GMs, are rejected. The pinned core checks SOAP
+accounts against `SEC_ADMINISTRATOR` and authenticates RA according to
+`Ra.MinLevel` (default 3), then discards caller identity before world-thread
+dispatch. Therefore RA must admit only administrators, and diagnosis refuses
+all sessionless origins while `Ra.MinLevel < 3`, including local console/SOAP:
+the handler cannot distinguish these origins or recheck individual RA accounts.
+Keep administrator-only RA admission for the lifetime of its sessions.
+No core or dependency authorization checks are changed.
 
 - STAGE requires the character to be **offline**, a verified dedicated random-bot
   account and no group. SQL rechecks `characters.online = 0`. An already running
@@ -181,6 +247,13 @@ Local evidence for this candidate:
   with the real optional interface and also with no interface. Covers disabled
   mode, humans/selfbots/control, Pending restart, replay/conflict, guild loss,
   retirement/group refusal, failed writes, schema/cache failure and timeout/reload.
+- Diagnosis regression tests exercise every runtime validation guard, policy
+  rejections, named asynchronous reasons, and the production command handler's
+  session/admin-admission and GUID parsing checks. They compare diagnosis output
+  with actual pre-commit validation, including account 19 / guild 1 / GUID 187
+  fixtures with both random-account membership outcomes. Repeated diagnosis
+  leaves DB calls, commits, receipts, cache version/records and counters unchanged.
+  These fixtures do not establish Trela's actual runtime rejection reason.
 - Disposable MySQL 8.4.10 (nine tests): migration replay, exact SQL receipts, offline-STAGE enforcement, Pending reload,
   guild transfer/disband, no level/money changes, stale revisions/concurrency,
   audit failure/rollback, safe retirement and idempotent orphan history.

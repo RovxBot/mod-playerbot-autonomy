@@ -1,3 +1,4 @@
+#include <charconv>
 #include <sstream>
 
 #include "Chat.h"
@@ -105,16 +106,36 @@ private:
         std::string action;
         input >> action;
         auto& runtime = Runtime();
+        if (action == "diagnose")
+        {
+            // The core erases CLI/RA/SOAP caller identity before dispatch. Fail
+            // closed if RA admits accounts below administrator security, since
+            // command RBAC metadata cannot enforce that boundary for CliHandler.
+            if (sConfigMgr->GetOption<int32>("Ra.MinLevel", 3) < SEC_ADMINISTRATOR)
+            {
+                handler->SendSysMessage("Diagnosis unavailable: Ra.MinLevel must require administrator access (3+).");
+                return true;
+            }
+            std::string token, extra;
+            uint32 guid = 0;
+            if (!(input >> token) || (input >> extra))
+                return false;
+            auto const parsed = std::from_chars(token.data(), token.data() + token.size(), guid);
+            if (parsed.ec != std::errc{} || parsed.ptr != token.data() + token.size() || !guid)
+                return false;
+            handler->SendSysMessage(FormatStageDiagnosis(runtime.DiagnoseStage(guid)));
+            return true;
+        }
         if (action == "status")
         {
             auto const& counts = runtime.Counters();
             handler->PSendSysMessage(
-                "Autonomy enabled={} maintenance_v1={} ready={} pages={} rows={} "
+                "Autonomy activities={} protection={} maintenance_v1={} ready={} pages={} rows={} "
                 "pending_observations={} orphan_observations={} commits={} "
-                "replays={} rejected={} failures={}",
-                runtime.Cache().Enabled(), runtime.ProtectionAvailable(), runtime.Cache().Ready(), counts.Pages,
-                counts.Rows, counts.Pending, counts.Orphans, counts.Committed, counts.Replayed, counts.Rejected,
-                counts.Failures);
+                "replays={} rejected={} failures={} expired_reservations={}",
+                runtime.ActivityEnabled(), runtime.Cache().Enabled(), runtime.ProtectionAvailable(),
+                runtime.Cache().Ready(), counts.Pages, counts.Rows, counts.Pending, counts.Orphans, counts.Committed,
+                counts.Replayed, counts.Rejected, counts.Failures, counts.ExpiredReservations);
             return true;
         }
         TransitionRequest request;

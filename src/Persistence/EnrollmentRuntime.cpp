@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <limits>
+#include <sstream>
 
 #include "CharacterCache.h"
 #include "Log.h"
@@ -9,13 +10,19 @@
 #include "Player.h"
 #include "QueryResult.h"
 #include "WorldSession.h"
+#include "WorldSessionMgr.h"
 
 #if __has_include("RoutineMaintenancePolicy.h")
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "RandomPlayerbotMgr.h"
 #include "RoutineMaintenancePolicy.h"
 #define AUTONOMY_HAS_MAINTENANCE_V1 1
+#endif
+#if __has_include("AutonomyEnrollment.h")
+#include "AutonomyEnrollment.h"
+#define AUTONOMY_HAS_ENROLLMENT_V1 1
 #endif
 
 namespace PlayerbotAutonomy
@@ -36,6 +43,7 @@ constexpr uint32 QueryTimeout = 30000;
 }
 
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
+[[maybe_unused]] bool EnrollmentLoginVeto(uint32 guid) { return Runtime().LoginBlocked(guid); }
 bool MaintenanceProvider(uint32 guid, Playerbots::RoutineMaintenance::Action action)
 {
     auto const& cache = Runtime().Cache();
@@ -44,7 +52,7 @@ bool MaintenanceProvider(uint32 guid, Playerbots::RoutineMaintenance::Action act
     if (action == Playerbots::RoutineMaintenance::Action::LegacyGuildAssignment)
         return cache.ShouldBlockLegacyGuildAssignment(guid);
     if (action == Playerbots::RoutineMaintenance::Action::AccountDeletion)
-        return true;
+        return cache.MayContainProtected();
     return cache.ShouldBlock(guid);
 }
 #endif
@@ -60,24 +68,25 @@ void EnrollmentRuntime::Configure(bool enabled)
 {
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
     static_assert(Playerbots::RoutineMaintenance::ContractVersion == 1, "Maintenance contract mismatch");
-    if (enabled && !Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider))
+    if (!Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider))
         FailStopWithoutProtection("maintenance provider already owned by another module");
 #else
-    if (enabled)
-        FailStopWithoutProtection("required playerbots interface was absent at compilation");
+    (void)enabled;
+    FailStopWithoutProtection("required playerbots interface was absent at compilation");
 #endif
-    // Never publish the enabled state until the process-lifetime veto is
-    // registered. A readiness=false cache then blocks unknown characters.
+#ifdef AUTONOMY_HAS_ENROLLMENT_V1
+    static_assert(Playerbots::AutonomyEnrollment::ContractVersion == 1, "Enrollment contract mismatch");
+    if (!Playerbots::AutonomyEnrollment::Register(&EnrollmentLoginVeto))
+        FailStopWithoutProtection("enrollment login provider already owned by another module");
+#endif
+    _activityEnabled = enabled;
+    _cache.SetActivityEnabled(enabled);
     ++_configuration;
-    _cache.SetEnabled(enabled);
+    _cache.SetEnabled(true);
     _cache.SetReady(false);
     _needLoad = true;
     _cursor = 0;
     _attempted = _opened;
-#ifdef AUTONOMY_HAS_MAINTENANCE_V1
-    if (!enabled)
-        Playerbots::RoutineMaintenance::UnregisterProvider(&MaintenanceProvider);
-#endif
 }
 
 bool EnrollmentRuntime::ProtectionAvailable() const
@@ -123,6 +132,7 @@ void EnrollmentRuntime::CheckSchema()
 void EnrollmentRuntime::Stop()
 {
     _cache.SetReady(false);
+    Release(_cache.Reserved());
     _query.reset();
     _transaction.reset();
     _store.Close();
@@ -151,6 +161,15 @@ void EnrollmentRuntime::Update(uint32 diff)
 {
     if (!OnWorldThread())
         return;
+    if (_cache.Reserved())
+    {
+        _reservationAge += diff;
+        if (_reservationAge >= 120000)
+        {
+            ++_counters.ExpiredReservations;
+            Release(_cache.Reserved());
+        }  // Durable Pending/unknown protection survives transient expiry.
+    }
     if (_cache.Enabled() && !ProtectionAvailable())
         FailStopWithoutProtection("maintenance provider was lost while autonomy remained enabled");
     if (_cache.Enabled() && !_attempted && !_opened)
@@ -258,7 +277,7 @@ void EnrollmentRuntime::LoadPage()
             record.State = ParseState(fields[4].Get<std::string>());
             record.Revision = fields[5].Get<uint64>();
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
-            record.AccountIsRandomBot = sPlayerbotAIConfig.IsInRandomAccountList(record.Account);
+            record.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(record.Account);
 #endif
             record.IdentityValid = record.Account && fields[7].IsNull() &&
                                    (fields[3].IsNull() || fields[3].Get<uint32>() == record.Account);
@@ -269,6 +288,9 @@ void EnrollmentRuntime::LoadPage()
             record.IdentityValid = record.IdentityValid &&
                                    sCharacterCache->GetCharacterAccountIdByGuid(guid) == record.Account &&
                                    sCharacterCache->GetCharacterGuildIdByGuid(guid) == record.Guild;
+#ifdef AUTONOMY_HAS_MAINTENANCE_V1
+            record.IdentityValid = record.IdentityValid && sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
+#endif
             if (orphaned)
             {
                 ++_counters.Orphans;
@@ -295,56 +317,224 @@ void EnrollmentRuntime::LoadPage()
     _query.emplace(_store.LoadPage(_cursor, PageSize).WithPreparedCallback(std::move(callback)));
 }
 
-bool EnrollmentRuntime::Validate(TransitionRequest& request, EnrollmentRecord& before)
+namespace
 {
-    if (!OnWorldThread() || !_cache.Enabled() || !_cache.Ready() || !ProtectionAvailable() ||
-        !ValidRequestId(request.RequestId) || request.Reason.empty() || request.Reason.size() > 255 ||
-        request.ExpectedRevision == std::numeric_limits<uint64>::max())
-        return false;
-    auto const guid = ObjectGuid::Create<HighGuid::Player>(request.Guid);
+void ValidateDiagnosis(EnrollmentDiagnosis& diagnosis, TransitionRequest const& request, bool checkEnvelope)
+{
+    auto check = [&]() -> EnrollmentValidation
+    {
+        if (!diagnosis.WorldThread)
+            return EnrollmentValidation::WrongThread;
+        if (!diagnosis.Enabled)
+            return EnrollmentValidation::Disabled;
+        if (!diagnosis.Ready)
+            return EnrollmentValidation::CacheNotReady;
+        if (!diagnosis.MaintenanceAvailable)
+            return EnrollmentValidation::MissingMaintenance;
+        if (!diagnosis.AccountTypesReady)
+            return EnrollmentValidation::AccountTypesUnavailable;
+        if (checkEnvelope && !ValidRequestId(request.RequestId))
+            return EnrollmentValidation::InvalidRequestId;
+        if (checkEnvelope && (request.Reason.empty() || request.Reason.size() > 255))
+            return EnrollmentValidation::InvalidReason;
+        if (request.ExpectedRevision == std::numeric_limits<uint64>::max())
+            return EnrollmentValidation::RevisionOverflow;
+        // A veto cannot interrupt a factory that already passed its entry guard.
+        // SQL independently requires online=0, even if no Player is connected.
+        if (request.Action == EnrollmentRequest::StageBeforeGuildJoin && diagnosis.ConnectedPlayer)
+            return EnrollmentValidation::StageRequiresOffline;
+        if (diagnosis.ConnectedPlayer && !diagnosis.SessionPresent)
+            return EnrollmentValidation::MissingSession;
+        if (!diagnosis.CacheFound)
+            return EnrollmentValidation::CacheMiss;
+        if (!diagnosis.Cached.IdentityValid)
+            return EnrollmentValidation::InvalidCacheIdentity;
+        if (diagnosis.Cached.Account != diagnosis.Account)
+            return EnrollmentValidation::CachedAccountMismatch;
+        if (diagnosis.Cached.Revision != request.ExpectedRevision)
+            return EnrollmentValidation::RevisionMismatch;
+        if (diagnosis.CharacterAccount != diagnosis.Account)
+            return EnrollmentValidation::CharacterAccountMismatch;
+        diagnosis.Facts.GuildJoinCommitted = request.Guild && diagnosis.Guild == request.Guild;
+        // No lease/operation producer exists in M1. Adding one must extend this gate.
+        diagnosis.Decision = DecideEnrollmentTransition(diagnosis.Facts, request.Action);
+        return diagnosis.Decision == EnrollmentDecision::Accept ? EnrollmentValidation::Accept
+                                                                : EnrollmentValidation::PolicyRejected;
+    };
+    diagnosis.Validation = check();
+}
+}  // namespace
+
+char const* EnrollmentDiagnosis::Reason() const
+{
+    switch (Validation)
+    {
+        case EnrollmentValidation::Accept:
+            return "accept";
+        case EnrollmentValidation::WrongThread:
+            return "wrong_world_thread";
+        case EnrollmentValidation::Disabled:
+            return "autonomy_disabled";
+        case EnrollmentValidation::CacheNotReady:
+            return "cache_not_ready";
+        case EnrollmentValidation::MissingMaintenance:
+            return "maintenance_v1_unavailable";
+        case EnrollmentValidation::AccountTypesUnavailable:
+            return "dedicated_account_snapshot_unavailable";
+        case EnrollmentValidation::InvalidRequestId:
+            return "invalid_request_id";
+        case EnrollmentValidation::InvalidReason:
+            return "invalid_reason";
+        case EnrollmentValidation::RevisionOverflow:
+            return "revision_overflow";
+        case EnrollmentValidation::StageRequiresOffline:
+            return "stage_requires_offline";
+        case EnrollmentValidation::MissingSession:
+            return "connected_player_missing_session";
+        case EnrollmentValidation::CacheMiss:
+            return "autonomy_cache_miss";
+        case EnrollmentValidation::InvalidCacheIdentity:
+            return "cache_identity_invalid";
+        case EnrollmentValidation::CachedAccountMismatch:
+            return "cached_account_mismatch";
+        case EnrollmentValidation::RevisionMismatch:
+            return "revision_mismatch";
+        case EnrollmentValidation::CharacterAccountMismatch:
+            return "character_cache_account_mismatch";
+        case EnrollmentValidation::PolicyRejected:
+            break;
+    }
+    switch (Decision)
+    {
+        case EnrollmentDecision::AlreadyInRequestedState:
+            return "already_in_requested_state";
+        case EnrollmentDecision::DenyUnknownState:
+            return "unknown_enrollment_state";
+        case EnrollmentDecision::DenyNonRandomAccount:
+            return "non_random_account";
+        case EnrollmentDecision::DenyHumanControl:
+            return "human_or_selfbot_control";
+        case EnrollmentDecision::DenyMissingAuthorization:
+            return "missing_authorization";
+        case EnrollmentDecision::DenyMissingRequestId:
+            return "missing_request_id";
+        case EnrollmentDecision::DenyMissingConfirmedGuild:
+            return "guild_join_not_confirmed";
+        case EnrollmentDecision::DenyNoPendingEnrollment:
+            return "no_pending_enrollment";
+        case EnrollmentDecision::DenyActivityInProgress:
+            return "activity_in_progress";
+        case EnrollmentDecision::DenyStillGuilded:
+            return "still_guilded";
+        case EnrollmentDecision::DenyNeverEnrolled:
+            return "never_enrolled";
+        case EnrollmentDecision::Accept:
+            break;
+    }
+    return "validation_rejected";
+}
+
+EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest action) const
+{
+    EnrollmentDiagnosis diagnosis;
+    diagnosis.Guid = lowGuid;
+    diagnosis.WorldThread = OnWorldThread();
+    if (!diagnosis.WorldThread)
+        return diagnosis;  // Never read thread-affine engine state from a foreign thread.
+    diagnosis.Enabled = _activityEnabled;
+    diagnosis.Ready = _cache.Ready();
+    diagnosis.MaintenanceAvailable = ProtectionAvailable();
+    diagnosis.Cached = _cache.Get(lowGuid);
+    // Cache records always carry their key, including invalidated placeholders.
+    diagnosis.CacheFound = lowGuid && diagnosis.Cached.Guid == lowGuid;
+    auto const guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
+    diagnosis.CharacterAccount = sCharacterCache->GetCharacterAccountIdByGuid(guid);
+    diagnosis.CharacterGuild = sCharacterCache->GetCharacterGuildIdByGuid(guid);
+    auto const group = sCharacterCache->GetCharacterGroupGuidByGuid(guid);
+    diagnosis.CharacterGroupGuid = group.GetRawValue();
     Player* player = ObjectAccessor::FindConnectedPlayer(guid);
-    // A veto cannot interrupt a factory that already passed its entry guard.
-    // Stage only a quiescent offline identity; SQL independently requires online=0.
-    if (request.Action == EnrollmentRequest::StageBeforeGuildJoin && player)
-        return false;
-    if (player && !player->GetSession())
-        return false;
-    before = _cache.Get(request.Guid);
-    request.Account =
-        player ? player->GetSession()->GetAccountId() : sCharacterCache->GetCharacterAccountIdByGuid(guid);
-    if (!before.IdentityValid || before.Account != request.Account || before.Revision != request.ExpectedRevision ||
-        sCharacterCache->GetCharacterAccountIdByGuid(guid) != request.Account)
-        return false;
-    EnrollmentFacts facts;
-    facts.Current = before.State;
+    diagnosis.ConnectedPlayer = player != nullptr;
+    WorldSession* session = player ? player->GetSession() : nullptr;
+    diagnosis.SessionPresent = session != nullptr;
+    diagnosis.Account = player ? (session ? session->GetAccountId() : 0) : diagnosis.CharacterAccount;
+    bool const readPlayerFacts = player && session && action != EnrollmentRequest::StageBeforeGuildJoin;
+    diagnosis.Guild = readPlayerFacts ? player->GetGuildId() : diagnosis.CharacterGuild;
+    diagnosis.Facts.Current = diagnosis.Cached.State;
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
-    facts.AccountIsRandomBot = sPlayerbotAIConfig.IsInRandomAccountList(request.Account);
-    if (player)
+    diagnosis.FactoryRandomAccount = sPlayerbotAIConfig.IsInRandomAccountList(diagnosis.Account);
+    diagnosis.AccountTypesReady = sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
+    diagnosis.RandomAccountChecked = true;
+    diagnosis.Facts.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(diagnosis.Account);
+    diagnosis.Facts.IsHumanControlled = sWorldSessionMgr->FindSession(diagnosis.Account) != nullptr;
+    if (readPlayerFacts)
     {
         auto* ai = GET_PLAYERBOT_AI(player);
-        facts.IsSelfbot = IsSelfBot(player);
-        facts.IsHumanControlled = !ai || IsRealPlayer(player) || ai->HasGameClientMaster();
+        diagnosis.Facts.IsSelfbot = IsSelfBot(player);
+        diagnosis.Facts.IsHumanControlled =
+            diagnosis.Facts.IsHumanControlled || !ai || IsRealPlayer(player) || ai->HasGameClientMaster();
     }
 #else
-    facts.IsHumanControlled = true;
+    diagnosis.Facts.IsHumanControlled = true;
 #endif
-    facts.IsAuthorized = true;  // Submit is exposed only by the console-only handler.
-    facts.HasRequestId = true;
-    auto const guild = player ? player->GetGuildId() : sCharacterCache->GetCharacterGuildIdByGuid(guid);
-    facts.CurrentlyGuilded = guild != 0;
-    facts.GuildJoinCommitted = request.Guild && guild == request.Guild;
-    facts.IsGrouped = player ? (player->GetGroup() || player->GetOriginalGroup())
-                             : !sCharacterCache->GetCharacterGroupGuidByGuid(guid).IsEmpty();
-    // No lease/operation producer exists in M1. Adding one must extend this gate.
-    return DecideEnrollmentTransition(facts, request.Action) == EnrollmentDecision::Accept;
+    // These read-only methods do not grant authority. The console-only handler
+    // authorizes Submit; request identity is checked separately for real requests.
+    diagnosis.Facts.IsAuthorized = true;
+    diagnosis.Facts.HasRequestId = true;
+    diagnosis.Facts.CurrentlyGuilded = diagnosis.Guild != 0;
+    diagnosis.Facts.IsGrouped = readPlayerFacts ? (player->GetGroup() || player->GetOriginalGroup()) : !group.IsEmpty();
+    return diagnosis;
+}
+
+EnrollmentDiagnosis EnrollmentRuntime::Diagnose(TransitionRequest const& request) const
+{
+    auto diagnosis = Observe(request.Guid, request.Action);
+    ValidateDiagnosis(diagnosis, request, true);
+    return diagnosis;
+}
+
+EnrollmentDiagnosis EnrollmentRuntime::DiagnoseStage(uint32 guid) const
+{
+    auto diagnosis = Observe(guid, EnrollmentRequest::StageBeforeGuildJoin);
+    TransitionRequest eligibility;
+    eligibility.Guid = guid;
+    eligibility.ExpectedRevision = diagnosis.Cached.Revision;
+    ValidateDiagnosis(diagnosis, eligibility, false);
+    return diagnosis;
+}
+
+std::string FormatStageDiagnosis(EnrollmentDiagnosis const& diagnosis)
+{
+    std::ostringstream output;
+    output << std::boolalpha << "Autonomy diagnose guid=" << diagnosis.Guid
+           << " world_thread=" << diagnosis.WorldThread;
+    if (!diagnosis.WorldThread)
+        return output.str() + " stage_world_checks=FAIL reason=" + diagnosis.Reason() + " facts=unobserved";
+    output << " enabled=" << diagnosis.Enabled << " maintenance_v1=" << diagnosis.MaintenanceAvailable
+           << " ready=" << diagnosis.Ready << " account_types_ready=" << diagnosis.AccountTypesReady
+           << "\nautonomy_cache_found=" << diagnosis.CacheFound << " identity_valid=" << diagnosis.Cached.IdentityValid
+           << " cached_account=" << diagnosis.Cached.Account << " cached_guild=" << diagnosis.Cached.Guild
+           << " cached_state=" << StateName(diagnosis.Cached.State) << " cached_revision=" << diagnosis.Cached.Revision
+           << "\nrandom_account="
+           << (diagnosis.RandomAccountChecked ? (diagnosis.Facts.AccountIsRandomBot ? "true" : "false") : "unavailable")
+           << " factory_account=" << diagnosis.FactoryRandomAccount
+           << " dedicated_type1_account=" << diagnosis.Facts.AccountIsRandomBot
+           << " validation_account=" << diagnosis.Account << " character_cache_account=" << diagnosis.CharacterAccount
+           << " character_cache_guild=" << diagnosis.CharacterGuild
+           << " character_cache_group_guid=" << diagnosis.CharacterGroupGuid
+           << "\nconnected_player=" << diagnosis.ConnectedPlayer << " world_session="
+           << (diagnosis.ConnectedPlayer ? (diagnosis.SessionPresent ? "present" : "absent") : "not_applicable")
+           << "\nstage_world_checks=" << (diagnosis.Passed() ? "PASS" : "FAIL") << " reason=" << diagnosis.Reason()
+           << " expected_revision=" << diagnosis.Cached.Revision
+           << " scope=current_world_eligibility_only; request/replay/busy/SQL checks not evaluated; nothing queued";
+    return output.str();
 }
 
 bool EnrollmentRuntime::Submit(TransitionRequest request)
 {
     if (!OnWorldThread())
         return false;
-    if (_request || _query || _transaction || !_cache.Enabled() || !_cache.Ready() || !ProtectionAvailable() ||
-        !ValidRequestId(request.RequestId))
+    if (_request || _query || _transaction || !_activityEnabled || !_cache.Ready() || !ProtectionAvailable() ||
+        !ValidRequestId(request.RequestId) || (request.Director && !request.ActorGuid))
     {
         ++_counters.Rejected;
         return false;
@@ -412,14 +602,22 @@ void EnrollmentRuntime::LookupReceipt(bool afterCommit)
             _request.reset();
             return;
         }
-        if (afterCommit || !_cache.Enabled() || !Validate(*_request, _before))
+        // A missing post-commit receipt is a DB failure, not a fresh validation
+        // attempt. Never retry the write or read engine state on that path.
+        auto const diagnosis = afterCommit ? EnrollmentDiagnosis{} : Diagnose(*_request);
+        if (afterCommit || !diagnosis.Passed())
         {
+            LOG_ERROR("module", "autonomy enrollment: rejected request={} character={} event={} reason={}",
+                      request.RequestId, request.Guid, EventName(request.Action),
+                      afterCommit ? "missing_durable_receipt" : diagnosis.Reason());
             ++_counters.Rejected;
             _request.reset();
             if (afterCommit)
                 Fail();
             return;
         }
+        _request->Account = diagnosis.Account;
+        _before = diagnosis.Cached;
         _cache.Invalidate(request.Guid);  // protect until commit and reload,
                                           // including uncertain outcomes
         _transaction.emplace(_store.Commit(*_request, _before));
@@ -433,5 +631,69 @@ void EnrollmentRuntime::LookupReceipt(bool afterCommit)
             });
     };
     _query.emplace(_store.FindReceipt(request.RequestId).WithPreparedCallback(std::move(callback)));
+}
+}  // namespace PlayerbotAutonomy
+
+namespace PlayerbotAutonomy
+{
+bool EnrollmentRuntime::Reserve(uint32 guid)
+{
+#ifndef AUTONOMY_HAS_ENROLLMENT_V1
+    (void)guid;
+    return false;
+#else
+    if (!OnWorldThread() || !_activityEnabled || !Idle() ||
+        !Playerbots::AutonomyEnrollment::IsOwner(&EnrollmentLoginVeto))
+        return false;
+    auto const record = _cache.Get(guid);
+    if (!record.IdentityValid || !record.AccountIsRandomBot || record.Guild ||
+        record.State == EnrollmentState::Unknown || record.State == EnrollmentState::Persistent)
+        return false;
+    _reservationAge = 0;
+    return _cache.Reserve(guid);
+#endif
+}
+void EnrollmentRuntime::Release(uint32 guid)
+{
+    if (OnWorldThread())
+        _cache.Release(guid);
+}
+bool EnrollmentRuntime::PrepareOffline(uint32 lowGuid)
+{
+#if defined(AUTONOMY_HAS_ENROLLMENT_V1) && defined(AUTONOMY_HAS_MAINTENANCE_V1)
+    if (!OnWorldThread() || _cache.Reserved() != lowGuid || !_cache.LoginBlocked(lowGuid))
+        return false;
+    auto guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
+    auto* player = ObjectAccessor::FindConnectedPlayer(guid);
+    if (!player)
+        return !PlayerbotHolder::HasPendingBotLogin(guid);
+    auto* ai = GET_PLAYERBOT_AI(player);
+    if (!player->GetSession() || !ai || IsRealPlayer(player) || IsSelfBot(player) || ai->HasGameClientMaster() ||
+        player->GetGuildId() || player->GetGroup() || player->GetOriginalGroup() || player->IsInCombat() ||
+        player->IsBeingTeleported() || !player->IsAlive() || sRandomPlayerbotMgr.GetPlayerBot(guid) != player)
+        return false;
+    sRandomPlayerbotMgr.LogoutPlayerBot(guid);
+    return false;  // Re-resolve only on a later tick, after normal logout/save and pending-login cleanup.
+#else
+    (void)lowGuid;
+    return false;
+#endif
+}
+bool EnrollmentRuntime::HandoffLogin(uint32 lowGuid)
+{
+#if defined(AUTONOMY_HAS_ENROLLMENT_V1) && defined(AUTONOMY_HAS_MAINTENANCE_V1)
+    if (!OnWorldThread() || !_activityEnabled || !Idle() || _cache.Reserved() != lowGuid)
+        return false;
+    auto const record = _cache.Get(lowGuid);
+    if (!record.IdentityValid || record.State != EnrollmentState::Pending || !record.AccountIsRandomBot ||
+        sWorldSessionMgr->FindSession(record.Account))
+        return false;
+    _cache.AllowLogin(lowGuid);
+    sRandomPlayerbotMgr.AddPlayerBot(ObjectGuid::Create<HighGuid::Player>(lowGuid), 0);
+    return true;
+#else
+    (void)lowGuid;
+    return false;
+#endif
 }
 }  // namespace PlayerbotAutonomy

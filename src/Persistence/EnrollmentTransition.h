@@ -22,6 +22,8 @@ struct TransitionRequest
     EnrollmentRequest Action = EnrollmentRequest::StageBeforeGuildJoin;
     std::string RequestId;
     std::string Reason;
+    bool Director = false;
+    std::uint32_t ActorGuid = 0;
 };
 
 struct TransitionReceipt
@@ -61,8 +63,9 @@ inline bool MatchesReceipt(TransitionRequest const& request, TransitionReceipt c
     return receipt.Guid == request.Guid && receipt.Account == request.Account && receipt.Guild == request.Guild &&
            receipt.ExpectedRevision == request.ExpectedRevision &&
            receipt.ResultingRevision == request.ExpectedRevision + 1 && receipt.Event == EventName(request.Action) &&
-           receipt.Outcome == StateAfterAcceptedTransition(request.Action) && receipt.ActorKind == "AUTHORIZED_ADMIN" &&
-           receipt.ActorGuid == 0 && receipt.Reason == request.Reason;
+           receipt.Outcome == StateAfterAcceptedTransition(request.Action) &&
+           receipt.ActorKind == (request.Director ? "RECRUITMENT" : "AUTHORIZED_ADMIN") &&
+           receipt.ActorGuid == request.ActorGuid && receipt.Reason == request.Reason;
 }
 }  // namespace PlayerbotAutonomy
 #endif

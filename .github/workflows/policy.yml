@@ -46,6 +46,18 @@ jobs:
               tests/$test.cpp src/Persistence/EnrollmentTransition.cpp -o /tmp/autonomy-runtime-unit-tests
             /tmp/autonomy-runtime-unit-tests
           done
+      - name: Test founding controller
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/GuildDirectorTests.cpp src/Guild/GuildDirector.cpp -o /tmp/autonomy-guild-tests
+          /tmp/autonomy-guild-tests
+      - name: Test recruitment controller
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/RecruitmentDirectorTests.cpp src/Guild/GuildDirector.cpp src/Guild/RecruitmentDirector.cpp -o /tmp/autonomy-recruit-tests
+          /tmp/autonomy-recruit-tests
       - name: Verify missing-interface runtime stays dormant
         env:
           CXX_STANDARD: ${{ matrix.standard }}
@@ -59,12 +71,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: 3beeabf9735766edfa24abf9032b20e8c2bb25e2
+          ref: 422db5a50b429db01ab481ba597b928c87b0eb98
           path: _deps/maintenance
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             src/Bot/RoutineMaintenancePolicy.h
+            src/Bot/AutonomyEnrollment.h
       - name: Exercise the real controller with deterministic engine and DB boundary fakes
         env:
           CXX_STANDARD: ${{ matrix.standard }}
@@ -108,7 +121,7 @@ jobs:
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
           AUTONOMY_MYSQL_DATABASE: autonomy_test
-        run: python3 -m unittest discover -s tests -p test_enrollment_mysql.py -v
+        run: python3 -m unittest discover -s tests -p 'test_*mysql.py' -v
 
   integration-contracts:
     runs-on: ubuntu-latest
@@ -136,7 +149,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: 59e5f26d417fca173d969cd6a1064ec9638b1afa
+          ref: 422db5a50b429db01ab481ba597b928c87b0eb98
           path: _deps/playerbots
           persist-credentials: false
           sparse-checkout-cone-mode: false

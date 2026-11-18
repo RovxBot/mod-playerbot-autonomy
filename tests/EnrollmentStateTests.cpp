@@ -210,14 +210,14 @@ constexpr bool TestMaintenanceSnapshotPolicy()
     if (MustProtectFromDestructiveMaintenance(true, true, false, false, EnrollmentState::Retired, false, false))
         return false;
 
-    // Disabled mode or human-controlled candidate: autonomy adds no veto.
-    if (MustProtectFromDestructiveMaintenance(false, true, false, false, EnrollmentState::Pending, true, true))
+    // Durable rows remain protected with activities disabled or identity/control changed.
+    if (!MustProtectFromDestructiveMaintenance(false, true, false, false, EnrollmentState::Pending, true, true))
         return false;
-    if (MustProtectFromDestructiveMaintenance(true, false, false, false, EnrollmentState::Persistent, true, true))
+    if (!MustProtectFromDestructiveMaintenance(true, false, false, false, EnrollmentState::Persistent, true, true))
         return false;
-    if (MustProtectFromDestructiveMaintenance(true, true, true, false, EnrollmentState::Persistent, true, true))
+    if (!MustProtectFromDestructiveMaintenance(true, true, true, false, EnrollmentState::Persistent, true, true))
         return false;
-    if (MustProtectFromDestructiveMaintenance(true, true, false, true, EnrollmentState::Persistent, true, true))
+    if (!MustProtectFromDestructiveMaintenance(true, true, false, true, EnrollmentState::Persistent, true, true))
         return false;
     return true;
 }

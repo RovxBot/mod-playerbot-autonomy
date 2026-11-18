@@ -97,7 +97,9 @@ TransactionCallback EnrollmentStore::Commit(TransitionRequest const& request, En
     audit->SetData(4, std::string_view(StateName(before.State)));
     audit->SetData(5, std::string_view(after));
     audit->SetData(6, request.Guild);
-    audit->SetData(7, request.Reason);
+    audit->SetData(7, std::string_view(request.Director ? "RECRUITMENT" : "AUTHORIZED_ADMIN"));
+    audit->SetData(8, request.ActorGuid);
+    audit->SetData(9, request.Reason);
     transaction->Append(audit);
     return AsyncCommitTransaction(transaction);
 }
