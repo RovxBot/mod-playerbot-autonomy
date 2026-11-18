@@ -280,12 +280,13 @@ void TestGuild(GuildStore& store, EnrollmentStore& enrollment)
                  "rollback, restart\n";
 }
 GuildIntent StagedIntent(GuildStore& guilds, EnrollmentStore& enrollment, uint32 slot, uint32 founder, uint32 account,
-                         std::string const& name)
+                         std::string const& name, uint32 faction = 0)
 {
     GuildIntent m;
     m.Slot = slot;
     m.Founder = founder;
     m.Account = account;
+    m.Faction = faction;
     m.Name = name;
     m.Reason = "fixture intent";
     m.StageRequest = GuildRequestId(founder, slot, 0x1001, 0);
@@ -455,13 +456,11 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     enrollment.Raw("DELETE FROM playerbot_autonomy_enrollment WHERE character_guid IN (1,14)");
     enrollment.Raw("DELETE FROM guild_member WHERE guid IN (1,14)");
     enrollment.Raw("DELETE FROM guild WHERE guildid IN (23,24)");
-    enrollment.Raw("UPDATE characters SET account=1,name='Junglatu',race=8 WHERE guid=1");
+    // Match the reported factions; races 1 and 2 are synthetic representatives.
+    enrollment.Raw("UPDATE characters SET account=1,name='Junglatu',race=1 WHERE guid=1");
     enrollment.Raw("UPDATE characters SET account=2,name='Crudi',race=2 WHERE guid=14");
     auto m = StagedIntent(store, enrollment, 1, 1, 1, "Ashen Vanguard");
-    auto good = StagedIntent(store, enrollment, 2, 14, 2, "Amber Covenant");
-    // Both fixtures are Horde; faction is immutable once intent has been saved.
-    store.Raw("UPDATE playerbot_autonomy_guild SET faction=1 WHERE slot IN (1,2)");
-    m.Faction = good.Faction = 1;
+    auto good = StagedIntent(store, enrollment, 2, 14, 2, "Amber Covenant", 1);
     m.Phase = good.Phase = GuildPhase::Creating;
     assert(Await(store.Save(m, GuildPhase::Planned)) && Await(store.Save(good, GuildPhase::Planned)));
     enrollment.Raw("INSERT INTO guild VALUES(23,1,'Ashen Vanguard'),(24,14,'Amber Covenant')");
@@ -471,7 +470,7 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     FakePlayer.Guild = 23;
     FakeCharacterCache.Account = 7;
     FakeCharacterCache.Guild = 0;
-    FakeCharacterCache.Entries[1] = {1, 23, 1, {}, "Junglatu", 1};
+    FakeCharacterCache.Entries[1] = {1, 23, 1, {}, "Junglatu", 0};
     FakeCharacterCache.Entries[14] = {2, 24, 1, {}, "Crudi", 1};
     sPlayerbotAIConfig.Accounts = {1, 2, 7};
     AddWorldGuild(23, 1, m.Name);
@@ -492,7 +491,7 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     assert(Await(enrollment.Commit(confirm, before)));
     auto const untouched = store
                                .Inspect(
-                                   "SELECT CONCAT(phase,':',guild_id,':',changed_at,':',reason) "
+                                   "SELECT CONCAT(phase,':',guild_id,':',faction,':',changed_at,':',reason) "
                                    "FROM playerbot_autonomy_guild WHERE slot=2")
                                ->Fetch()[0]
                                .Get<std::string>();
@@ -511,6 +510,7 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     auto const creates = FakeGuildCreates;
     PumpGuild(restarted, 150);
     assert(restarted.Intents().at(1).Phase == GuildPhase::Quarantined && FakeGuildCreates == creates);
+    assert(restarted.Intents().at(1).Faction == 0 && restarted.Intents().at(2).Faction == 1);
     restarted.Stop();
     m.Phase = GuildPhase::Quarantined;
     m.Guild = 23;
@@ -541,7 +541,7 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
                       "IS NULL") == 1);
     }
     for (auto const& fault : std::vector<std::pair<std::string, std::string>>{
-             {"UPDATE characters SET race=1 WHERE guid=1", "UPDATE characters SET race=8 WHERE guid=1"},
+             {"UPDATE characters SET race=2 WHERE guid=1", "UPDATE characters SET race=1 WHERE guid=1"},
              {"UPDATE guild SET leaderguid=14 WHERE guildid=23", "UPDATE guild SET leaderguid=1 WHERE guildid=23"},
              {"UPDATE guild SET name='ashen Vanguard' WHERE guildid=23",
               "UPDATE guild SET name='Ashen Vanguard' WHERE guildid=23"},
@@ -627,7 +627,7 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     assert(Runtime().Cache().Get(14).State == EnrollmentState::Persistent && Runtime().Cache().Get(14).Revision == 2);
     assert(FakeGuildCreates == creates);
     assert(store
-               .Inspect("SELECT CONCAT(phase,':',guild_id,':',changed_at,':',reason) "
+               .Inspect("SELECT CONCAT(phase,':',guild_id,':',faction,':',changed_at,':',reason) "
                         "FROM playerbot_autonomy_guild WHERE slot=2")
                ->Fetch()[0]
                .Get<std::string>() == untouched);

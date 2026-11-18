@@ -17,7 +17,7 @@ quarantine governance; character protection remains intact.
 ## Activation and dependency order
 
 Use core test-staging `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6` and playerbots
-master companion `422db5a50b429db01ab481ba597b928c87b0eb98` (separate owner-fork PR).
+master `696a009ceeeb400cfe40eedcd8a6c9333bdc1b59` (merged enrollment handoff).
 Keep dungeon-clear unchanged. Autonomy registers M1 protection before the guild
 script. Guild work waits for complete M1 and ownership snapshots and the startup
 existing-guild audit. Actual combined script/include/link order remains a manual

@@ -131,3 +131,10 @@ per-character cache refresh and explicit default-off recovery commands. It has
 disposable MySQL 8.0.44/binary decoder and deterministic evidence only; no
 combined-server build or live recovery/deployment was performed. Review that
 runbook before a separately authorized rollout.
+
+The founding-recovery compatibility pin now tracks playerbots master
+`696a009ceeeb400cfe40eedcd8a6c9333bdc1b59`. Its tree is identical to the original
+`422db5a50b429db01ab481ba597b928c87b0eb98` companion snapshot in the historical table
+above; no source/API changes intervene. CI and the binary prepared harness use
+the updated master pin. The recovery fixture matches Alliance Junglatu and
+Horde Crudi, retaining a negative cross-faction recovery check.

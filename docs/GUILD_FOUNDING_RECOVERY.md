@@ -2,9 +2,9 @@
 
 This revision is source and disposable-test evidence only. No live SQL, server
 build, deployment or recovery was performed. The production report is supplied
-by the operator: slot 1, Junglatu (GUID/account 1/1), Ashen Vanguard, core guild
+by the operator: slot 1, Alliance Junglatu (GUID/account 1/1), Ashen Vanguard, core guild
 23, QUARANTINED with NULL recorded guild, Pending revision 1 and an exact STAGE
-receipt 0 -> 1; slot 2, Crudi (14/2), Amber Covenant, guild 24, Managed/Persistent
+receipt 0 -> 1; slot 2, Horde Crudi (14/2), Amber Covenant, guild 24, Managed/Persistent
 revision 2. The reported 20:32:19 and 20:32:36 CHECK errors and 20:32:18 ->
 20:32:25 creation/timeout sequence motivate these tests; they are not new live
 observations.
@@ -145,10 +145,17 @@ character stays protected.
 
 The prepared harness uses actual GuildStore/EnrollmentStore/GuildRuntime code
 and the unmodified core Field/QueryResult decoder at the core pin above, with
-playerbots master `422db5a50b429db01ab481ba597b928c87b0eb98`. Engine objects and
+playerbots master `696a009ceeeb400cfe40eedcd8a6c9333bdc1b59`. Engine objects and
 queue scheduling are deterministic fakes. Dungeon-clear is unchanged; this
 slice introduces no cross-repository API patch. The existing compatibility
 pins describe the tested source set, not a claim about the deployed SHA.
+The playerbots pin is the verified current master merge commit. Its Git tree
+`e8be0e336ef81f4425380af0647fd2b02197511e` is identical to the prior
+`422db5a50b429db01ab481ba597b928c87b0eb98` pin: no source or interface changes
+intervene. The recovery fixture now preserves the reported two-faction incident:
+Alliance Junglatu (0), Horde Crudi (1), with synthetic representative races.
+It also rejects a Horde race substituted for Junglatu and verifies Crudi
+remains unchanged, including faction.
 
 ```sh
 AUTONOMY_MYSQL_SOCKET=/path/to/disposable/mysql.sock \
