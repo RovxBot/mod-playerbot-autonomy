@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: 59e5f26d417fca173d969cd6a1064ec9638b1afa
+          ref: a3d4ed4d2803262fbc80705eac83bb3fa286ec5b
           path: _deps/playerbots
           persist-credentials: false
           sparse-checkout-cone-mode: false
