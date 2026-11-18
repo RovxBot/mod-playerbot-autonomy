@@ -37,8 +37,11 @@ at a time; an uncertain commit is read back before further action.
 
 Start with `PlayerbotAutonomy.Enable=1`,
 `PlayerbotAutonomy.GuildDirector.Enable=1`, and `GuildDirector.DryRun=1` (full
-prefix `PlayerbotAutonomy.`). Dry run permits reads and planning only: no intent,
-reservation, logout/login, enrollment or guild write. After controlled review,
+prefix `PlayerbotAutonomy.`). Automatic dry run permits reads and planning only:
+no intent, reservation, logout/login, enrollment or guild write. Explicit console
+recovery has a separate approval/write gate and can run while automatic work is
+in dry run; follow [the recovery runbook](GUILD_FOUNDING_RECOVERY.md).
+After controlled review,
 `DryRun=0` authorizes internal founding without manual enrollment or GM/SOAP
 mutation commands. `AllowEnrollmentCommands` may remain 0. Config includes
 count, faction percentage, membership cap, class mask, candidate budget, interval
@@ -56,7 +59,7 @@ a fresh full cooldown. Targets below existing ownership never delete guilds.
    O(1), with a separate ordered GUID index for world-thread candidate traversal.
 2. Commit a unique PLANNED intent including initial enrollment revision and exact
    STAGE UUID. Reserve this GUID, wait for normal logout/save and login cleanup,
-and call the M1 STAGE API. No character progression is changed.
+   and call the M1 STAGE API. No character progression is changed.
 3. Read the exact durable RECRUITMENT actor/STAGE audit and receipt. A preexisting
    unrelated Pending is insufficient. Once Pending is reconciled, hand off to
    normal protected bot login. Revalidate all live facts before creation.

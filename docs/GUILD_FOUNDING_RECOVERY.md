@@ -165,7 +165,8 @@ Local results on disposable **MySQL 8.0.44**:
   errors. Injected MANAGED audit failure retains the identity and reservation,
   then succeeds after fault removal without repeating Create.
 - Fresh adapter between Create/registration, explicit quarantine, exact recovery
-  identity/name/phase/STAGE rejections, audit failure rollback, console/config/
+  identity/name/phase/STAGE rejections, audit failure rollback, lost-acknowledgement
+  readback, console/config/
   human control gates, revocation while proof is pending, idempotent replay,
   normal Confirm(1 -> 2), repeated quarantine, unchanged successful guild 24.
   Journal upgrade/replay preserves all prior receipts and their timestamps.
