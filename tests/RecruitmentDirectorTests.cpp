@@ -37,7 +37,7 @@ struct Fixture final : Port, RecruitmentPort
     }
     bool AuthorizedRecruiter(GuildIntent const&, uint32_t actor) const override
     {
-        return Authority && (actor == 1 || actor == 2);
+        return Authority && Members.count(actor) && (actor == 1 || actor == 90);
     }
     bool IsRecruitMember(uint32_t, uint32_t guid) const override { return Members.count(guid); }
     bool StageRecruit(RecruitmentIntent const& m, EnrollmentRecord const&) override
@@ -175,14 +175,17 @@ int main()
     assert(job);
     assert(!p.Request(job->Guid, 101, 2));
     Fixture officer;
+    officer.Members.insert(90);
+    officer.Bots[90].Enrollment.Guild = 101;
+    officer.Bots[90].Enrollment.State = EnrollmentState::Persistent;
     RecruitmentDirector represented(officer, officer);
     auto one = s;
     one.CandidateBudget = 1;
     represented.Configure(one, g);
     officer.Step(represented);  // Founder consumes the single candidate budget.
-    assert(represented.Request(2, 101, 2));
+    assert(represented.Request(2, 101, 90));
     officer.FlushAll();
-    assert(officer.Jobs[2].Actor == 2);
+    assert(officer.Jobs[2].Actor == 90);
     officer.Step(represented, 5);
     officer.FlushAll();
     assert(officer.Bots[2].Enrollment.State == EnrollmentState::Persistent);
