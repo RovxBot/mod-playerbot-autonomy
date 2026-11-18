@@ -122,3 +122,12 @@ disposition for master-target PRs if Actions is re-enabled. License/distribution
 external implementation or license choice is imported here. Issues #5, #6, #13
 and #17 stay open until their actual acceptance gates are met. A successful cheap
 test run is not grounds for closing them or enabling the realm automatically.
+
+## Interrupted founding recovery follow-up
+
+The [founding recovery runbook](GUILD_FOUNDING_RECOVERY.md) adds a required,
+replay-safe 19-November module journal migration, phase/lease coordination,
+per-character cache refresh and explicit default-off recovery commands. It has
+disposable MySQL 8.0.44/binary decoder and deterministic evidence only; no
+combined-server build or live recovery/deployment was performed. Review that
+runbook before a separately authorized rollout.

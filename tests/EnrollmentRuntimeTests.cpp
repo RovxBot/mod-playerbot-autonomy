@@ -503,6 +503,20 @@ int main()
     runtime.Configure(true);
     Pump();
 #ifdef PLAYERBOTS_AUTONOMY_ENROLLMENT_H
+    // The director owns bounded renewal; M1 still expires abandoned leases.
+    if (!runtime.Cache().Reserved())
+        assert(runtime.Reserve(42));
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        runtime.Update(60000);
+        assert(runtime.RenewReservation(42));
+    }
+    assert(runtime.Cache().Reserved() == 42);
+    auto const expired = runtime.Counters().ExpiredReservations;
+    runtime.Update(120000);
+    assert(!runtime.Cache().Reserved() && runtime.Counters().ExpiredReservations == expired + 1);
+    assert(runtime.Cache().ShouldBlock(42));
+    Pump();
     assert(runtime.Reserve(42));
     assert(runtime.PrepareOffline(42));
     assert(runtime.HandoffLogin(42));

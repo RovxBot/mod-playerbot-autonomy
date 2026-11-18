@@ -88,11 +88,11 @@ void GuildDirector::Quarantine(GuildIntent intent, std::string reason)
 {
     auto before = intent.Phase;
     intent.Phase = GuildPhase::Quarantined;
+    if (_created && intent.Slot == _jobSlot)
+        intent.Guild = _created;
     intent.Reason = std::move(reason);
     if (_port.Persist(intent, before))
     {
-        _port.Release(_reserved);
-        _reserved = _armed = _created = 0;
         _loginRequested = false;
     }
     Reject(intent.Reason);
@@ -105,7 +105,12 @@ void GuildDirector::Update(std::uint32_t diff)
     if (!_settings.Enabled)
         return;
     if (_jobSlot)
-        _jobAge = _jobAge > 300000 - std::min(diff, 300000u) ? 300000 : _jobAge + diff;
+    {
+        _jobAge = std::min(600000u, _jobAge + std::min(diff, 600000u));
+        _phaseAge = std::min(600000u, _phaseAge + std::min(diff, 600000u));
+        if (_reserved && _jobAge < 600000 && !_settings.DryRun && !_port.Reserve(_reserved))
+            _reserved = 0;
+    }
     if (diff < _untilStep)
     {
         _untilStep -= diff;
@@ -117,12 +122,25 @@ void GuildDirector::Update(std::uint32_t diff)
         Reject("awaiting_enrollment_or_ownership_snapshot");
         return;
     }
+    // Release only after the durable snapshot resolves the write, including
+    // uncertain acknowledgements. Scheduling a transaction is not a commit.
+    for (auto const& item : _port.Intents())
+        if (item.first == _jobSlot &&
+            (item.second.Phase == GuildPhase::Managed || item.second.Phase == GuildPhase::Quarantined))
+        {
+            _port.Release(_reserved);
+            _reserved = 0;
+        }
     bool auditedManaged = false;
+    bool unresolved = std::any_of(_port.Intents().begin(), _port.Intents().end(),
+                                  [](auto const& item) { return item.second.Phase == GuildPhase::Quarantined; });
     for (auto const& item : _port.Intents())
     {
         auto const& intent = item.second;
         if (intent.Phase == GuildPhase::Quarantined)
+        {
             continue;
+        }
         if (intent.Phase == GuildPhase::Managed)
         {
             if (auditedManaged || item.first <= _managedCursor)
@@ -156,11 +174,21 @@ void GuildDirector::Update(std::uint32_t diff)
             _last = std::string("dry_run_recover_slot=") + std::to_string(intent.Slot);
             return;
         }
+        if (unresolved && !(_jobSlot == intent.Slot && _created))
+        {
+            Reject("unresolved_quarantine_blocks_founding");
+            return;
+        }
         Progress(intent);
         return;
     }
     if (!auditedManaged)
         _managedCursor = 0;
+    if (unresolved)
+    {
+        Reject("unresolved_quarantine_blocks_founding");
+        return;
+    }
     if (_cooldown)
     {
         _last = "founding_cooldown";
@@ -224,14 +252,39 @@ void GuildDirector::Progress(GuildIntent const& intent)
         _jobSlot = intent.Slot;
         _created = _armed = 0;
         _jobAge = 0;
+        _phaseAge = 0;
+        _progress = 0;
         _loginRequested = false;
+        _createAttempted = false;
     }
-    if (_jobAge >= 180000)
+    auto c = _port.Candidate(intent.Founder);
+    unsigned progress = intent.Phase == GuildPhase::Creating ? 3u : intent.StageVerified ? (c.Online ? 2u : 1u) : 0u;
+    if (progress > _progress)
+    {
+        _progress = progress;
+        _phaseAge = 0;
+    }
+    if (_jobAge >= 600000 || _phaseAge >= (intent.Phase == GuildPhase::Creating ? 90000u : 180000u))
     {
         Quarantine(intent, "founding_timeout_pending_retained");
         return;
     }
-    auto c = _port.Candidate(intent.Founder);
+    // A successful API result must survive stale enrollment snapshots and every
+    // scheduling/SQL retry. Never re-enter Create for this intent.
+    if (intent.Phase == GuildPhase::Creating && _created)
+    {
+        auto next = intent;
+        next.Guild = _created;
+        next.Phase = GuildPhase::Managed;
+        next.Reason = "director-created ownership";
+        if (!_port.Durable(next))
+        {
+            Reject("awaiting_core_guild_commit");
+            return;
+        }
+        _port.Persist(next, GuildPhase::Creating);
+        return;
+    }
     if (!c.Enrollment.IdentityValid)
     {
         Reject("founder_snapshot_stale");
@@ -251,26 +304,31 @@ void GuildDirector::Progress(GuildIntent const& intent)
         }
         if (!_created)
         {
+            if (_createAttempted)
+            {
+                Quarantine(intent, "guild_api_failed_or_conflicted");
+                return;
+            }
+            if (!_reserved || !_port.Reserve(_reserved))
+            {
+                Quarantine(intent, "founding_reservation_lost");
+                return;
+            }
             if (!c.Available || !c.Online || c.Enrollment.Guild)
             {
                 Quarantine(intent, "founder_unavailable_at_create");
                 return;
             }
+            _createAttempted = true;
             _created = _port.Create(intent);
             if (!_created)
             {
                 Quarantine(intent, "guild_api_failed_or_conflicted");
                 return;
             }
+            _phaseAge = 0;
+            return;  // Core guild/member commits use a separate async pool.
         }
-        auto next = intent;
-        next.Guild = _created;
-        next.Phase = GuildPhase::Managed;
-        next.Reason = "director-created ownership";
-        _port.Persist(next, GuildPhase::Creating);
-        _port.Release(_reserved);
-        _reserved = 0;
-        return;
     }
     if (c.Enrollment.Guild)
     {

@@ -7,7 +7,7 @@
 using namespace PlayerbotAutonomy;
 struct Port : GuildPort
 {
-    bool Loaded = true, Safe = true, StageWorks = true;
+    bool Loaded = true, Safe = true, StageWorks = true, DurableGuild = true, SaveWorks = true, CreateWorks = true;
     unsigned Writes = 0, Stages = 0, Creates = 0, Confirms = 0, Logins = 0;
     uint32_t Reserved = 0;
     std::map<uint32_t, GuildIntent> Ledger;
@@ -19,6 +19,8 @@ struct Port : GuildPort
     std::map<uint32_t, GuildIntent> const& Intents() const override { return Ledger; }
     bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) override
     {
+        if (!SaveWorks)
+            return false;
         assert(!Queued);
         if (before)
             assert(Ledger.at(next.Slot).Phase == *before);
@@ -84,9 +86,12 @@ struct Port : GuildPort
     {
         assert(Bots.at(m.Founder).Enrollment.State == EnrollmentState::Pending);
         ++Creates;
+        if (!CreateWorks)
+            return 0;
         Bots.at(m.Founder).Enrollment.Guild = 100 + m.Slot;
         return 100 + m.Slot;
     }
+    bool Durable(GuildIntent const&) override { return DurableGuild; }
     bool Confirm(GuildIntent const& m, EnrollmentRecord const&) override
     {
         assert(m.Guild == Bots.at(m.Founder).Enrollment.Guild);

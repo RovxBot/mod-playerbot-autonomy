@@ -4,6 +4,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 required = [
+    "data/sql/db-characters/2026_11_19_00_playerbot_autonomy_guild_journal.sql",
     "data/sql/db-characters/2026_11_18_00_playerbot_autonomy_guild.sql",
     "src/GuildModule.cpp",
     "src/Guild/GuildDirector.cpp",

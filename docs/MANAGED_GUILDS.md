@@ -23,8 +23,10 @@ script. Guild work waits for complete M1 and ownership snapshots and the startup
 existing-guild audit. Actual combined script/include/link order remains a manual
 build/startup gate.
 
-Apply both 15-November M1 migrations first, then
-`2026_11_18_00_playerbot_autonomy_guild.sql`. The new module-owned InnoDB tables
+Apply both 15-November M1 migrations first, then the 18-November guild and
+recruitment migrations and `2026_11_19_00_playerbot_autonomy_guild_journal.sql`.
+The journal upgrade preserves history and permits repeated quarantine after
+explicit recovery. The new module-owned InnoDB tables
 store one immutable founding identity per slot and an append-only phase journal.
 Unique founder, name, stage request and managed guild keys exclude duplicate
 intents. The journal's enforced ROW_COUNT CHECK makes CAS/audit failures atomic.
@@ -54,7 +56,7 @@ a fresh full cooldown. Targets below existing ownership never delete guilds.
    O(1), with a separate ordered GUID index for world-thread candidate traversal.
 2. Commit a unique PLANNED intent including initial enrollment revision and exact
    STAGE UUID. Reserve this GUID, wait for normal logout/save and login cleanup,
-   and call the M1 STAGE API. No character progression is changed.
+and call the M1 STAGE API. No character progression is changed.
 3. Read the exact durable RECRUITMENT actor/STAGE audit and receipt. A preexisting
    unrelated Pending is insufficient. Once Pending is reconciled, hand off to
    normal protected bot login. Revalidate all live facts before creation.
@@ -70,11 +72,17 @@ An in-process create result is never repeated. Restart in CREATING is ambiguous:
 quarantine the intent, keep the founder Pending and the guild unmanaged, and
 require separate review. A durable MANAGED/Pending pair can automatically
 CONFIRM after revalidation; Persistent remains protected after any guild loss.
-PLANNED restarts resume only with the exact stage receipt. Jobs time out after
-180 seconds of enabled scheduler time and release transient reservations while
-retaining durable protection. DB timeouts wait for the outstanding operation;
+PLANNED restarts resume only with the exact stage receipt. Preparation and
+creation visibility have separate bounded progress windows and a 600-second
+total job cap. Owned reservations renew until the cap and release after durable
+terminal readback; abandoned M1 leases still expire after 120 seconds. See
+[founding race fixes and explicit recovery](GUILD_FOUNDING_RECOVERY.md).
+DB timeouts wait for the outstanding operation;
 there is no blind write retry or automatic CANCEL/RETIRE. Quarantined intents
-continue occupying their slot, preventing uncontrolled replacement creation.
+continue occupying their slot and block subsequent founding, including queued
+intents that have not created a guild. A returned in-process Create may finish
+registration. Explicit recovery requires separate operator approval and exact
+founding proof; it never adopts an unrelated guild.
 
 The complete managed roster is checked at action authorization and at most one
 managed roster per scheduled pass, bounded by the configured cap (hard maximum

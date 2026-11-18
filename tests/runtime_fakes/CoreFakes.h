@@ -42,7 +42,7 @@ public:
 class PreparedResultSet
 {
 public:
-    std::vector<std::vector<Field>> Rows;
+    std::vector<std::vector<Field> > Rows;
     std::size_t Index = 0;
     Field* Fetch() { return Rows.at(Index).data(); }
     bool NextRow() { return ++Index < Rows.size(); }
@@ -154,6 +154,24 @@ struct Player
     bool Combat = false;
     bool Teleporting = false;
     bool Alive = true;
+    bool InFlight = false, InWorld = true, Dungeon = false;
+    uint32 Invite = 0;
+    uint32 GetGuildIdInvited() const { return Invite; }
+    bool IsInFlight() const { return InFlight; }
+    bool InBattleground() const { return false; }
+    bool InArena() const { return false; }
+    bool InBattlegroundQueue() const { return false; }
+    bool IsInWorld() const { return InWorld; }
+    struct MapView
+    {
+        bool IsDungeon() const { return FakeDungeon; }
+        bool FakeDungeon = false;
+    } Map;
+    MapView* GetMap()
+    {
+        Map.FakeDungeon = Dungeon;
+        return &Map;
+    }
     bool IsInCombat() const { return Combat; }
     bool IsBeingTeleported() const { return Teleporting; }
     bool IsAlive() const { return Alive; }
@@ -185,12 +203,33 @@ inline Player* FindConnectedPlayer(ObjectGuid guid)
 }  // namespace ObjectAccessor
 struct CharacterCache
 {
+    struct Entry
+    {
+        uint32 AccountId = 7, GuildId = 0;
+        uint8 Class = 1;
+        ObjectGuid GroupGuid;
+        std::string Name = "Fixture";
+        uint32 Faction = 0;
+    };
+    std::unordered_map<uint32, Entry> Entries;
+    mutable Entry Fallback;
     std::optional<uint32> Account;
     std::optional<uint32> Guild;
     std::optional<uint32> Group;
-    uint32 GetCharacterAccountIdByGuid(ObjectGuid) const { return Account.value_or(FakePlayer.Session.Account); }
-    uint32 GetCharacterGuildIdByGuid(ObjectGuid) const { return Guild.value_or(FakePlayer.Guild); }
-    ObjectGuid GetCharacterGroupGuidByGuid(ObjectGuid) const { return {Group.value_or(FakePlayer.Grouped ? 99u : 0u)}; }
+    Entry const* GetCharacterCacheByGuid(ObjectGuid guid) const
+    {
+        auto found = Entries.find(guid.Value);
+        if (found != Entries.end())
+            return &found->second;
+        Fallback.AccountId = Account.value_or(FakePlayer.Session.Account);
+        Fallback.GuildId = Guild.value_or(FakePlayer.Guild);
+        Fallback.GroupGuid = {Group.value_or(FakePlayer.Grouped ? 99u : 0u)};
+        return &Fallback;
+    }
+    uint32 GetCharacterAccountIdByGuid(ObjectGuid guid) const { return GetCharacterCacheByGuid(guid)->AccountId; }
+    uint32 GetCharacterGuildIdByGuid(ObjectGuid guid) const { return GetCharacterCacheByGuid(guid)->GuildId; }
+    ObjectGuid GetCharacterGroupGuidByGuid(ObjectGuid guid) const { return GetCharacterCacheByGuid(guid)->GroupGuid; }
+    uint32 GetCharacterTeamByGuid(ObjectGuid guid) const { return GetCharacterCacheByGuid(guid)->Faction; }
 };
 inline CharacterCache FakeCharacterCache;
 #define sCharacterCache (&FakeCharacterCache)

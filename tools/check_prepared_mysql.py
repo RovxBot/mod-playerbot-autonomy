@@ -77,6 +77,7 @@ def main():
         sources = [ROOT / "tests/PreparedMySQLTests.cpp", ROOT / "src/Persistence/EnrollmentStore.cpp",
                    ROOT / "src/Persistence/EnrollmentRuntime.cpp", ROOT / "src/Persistence/EnrollmentTransition.cpp",
                    ROOT / "src/Guild/GuildStore.cpp", ROOT / "src/Guild/GuildDirector.cpp",
+                   ROOT / "src/Guild/GuildRuntime.cpp",
                    ROOT / "src/Guild/RecruitmentDirector.cpp", database / "Field.cpp", database / "QueryResult.cpp"]
         # The pinned core uses std::type_identity. Its decoder requires C++20;
         # module-only policies/controllers remain covered in C++17 and C++20.

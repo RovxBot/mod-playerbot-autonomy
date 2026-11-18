@@ -18,6 +18,8 @@ void GuildConnection::DoPrepareStatements()
     PrepareStatement(GuildInsert, GuildSql::Insert, CONNECTION_BOTH);
     PrepareStatement(GuildChange, GuildSql::Change, CONNECTION_BOTH);
     PrepareStatement(GuildAudit, GuildSql::Audit, CONNECTION_BOTH);
+    PrepareStatement(GuildCreated, GuildSql::Created, CONNECTION_BOTH);
+    PrepareStatement(GuildRecover, GuildSql::Recover, CONNECTION_BOTH);
 }
 bool GuildStore::Initialize(std::string const& info)
 {
@@ -31,6 +33,36 @@ PreparedStatement<GuildConnection>* GuildStore::Statement(GuildStatement index)
     return new PreparedStatement<GuildConnection>(index, GetPreparedStatementParamCount(index));
 }
 QueryCallback GuildStore::Load() { return AsyncQuery(Statement(GuildLoad)); }
+QueryCallback GuildStore::Created(GuildIntent const& m)
+{
+    auto* stmt = Statement(GuildCreated);
+    stmt->SetData(0, m.Guild);
+    stmt->SetData(1, m.Slot);
+    return AsyncQuery(stmt);
+}
+TransactionCallback GuildStore::Recover(GuildIntent const& m, std::string const& founderName)
+{
+    auto transaction = std::make_shared<Transaction<GuildConnection>>();
+    auto* stmt = Statement(GuildRecover);
+    stmt->SetData(0, m.Guild);
+    stmt->SetData(1, m.Reason);
+    stmt->SetData(2, m.Slot);
+    stmt->SetData(3, m.Founder);
+    stmt->SetData(4, m.Account);
+    stmt->SetData(5, std::string_view(PhaseName(m.Phase)));
+    stmt->SetData(6, m.StageRevision);
+    stmt->SetData(7, m.StageRequest);
+    stmt->SetData(8, m.Name);
+    stmt->SetData(9, founderName);
+    transaction->Append(stmt);
+    auto* audit = Statement(GuildAudit);
+    audit->SetData(0, m.Slot);
+    audit->SetData(1, std::string_view("MANAGED"));
+    audit->SetData(2, m.Guild);
+    audit->SetData(3, m.Reason);
+    transaction->Append(audit);
+    return AsyncCommitTransaction(transaction);
+}
 QueryCallback GuildStore::AuditPage(uint32 cursor)
 {
     auto* stmt = Statement(GuildAuditPage);

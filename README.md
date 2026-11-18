@@ -4,7 +4,8 @@ A planned autonomous-world simulation module for the [AzerothCore WotLK playerbo
 
 > **Status: M1 safety release candidate.** The operator reports M1 deployed; this candidate has not been deployed. The branch implements a disabled-by-default character-enrollment adapter, durable lifecycle, cached maintenance provider and tests. **No full combined worldserver build, real character pilot, or live enrollment is yet proven.** Do not enable on the realm before the integration gates pass.
 
-[Managed guild founding](docs/MANAGED_GUILDS.md), [automatic recruitment](docs/RECRUITMENT.md)
+[Founding race fixes and explicit recovery](docs/GUILD_FOUNDING_RECOVERY.md),
+[managed guild founding](docs/MANAGED_GUILDS.md), [automatic recruitment](docs/RECRUITMENT.md)
 and the [manual release checklist](docs/RELEASE_CANDIDATE.md) document the
 default-off director and its separate release gates.
 

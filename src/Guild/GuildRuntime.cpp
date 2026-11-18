@@ -64,8 +64,8 @@ void GuildRuntime::Stop()
 bool GuildRuntime::Ready() const
 {
     return std::this_thread::get_id() == _owner && _opened && _loaded && _auditDone && !_needLoad && !_query &&
-           !_transaction && _recruitLoaded && !_needRecruitLoad && Runtime().Idle() && Runtime().ActivityEnabled() &&
-           sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
+           !_transaction && _recruitLoaded && !_needRecruitLoad && Runtime().ActivityReady() &&
+           Runtime().ActivityEnabled() && sRandomPlayerbotMgr.DedicatedAccountSnapshotReady();
 }
 void GuildRuntime::Update(uint32 diff)
 {
@@ -193,6 +193,9 @@ bool GuildRuntime::Persist(GuildIntent const& next, std::optional<GuildPhase> be
 {
     if (!Ready() || _director.Settings().DryRun || !_director.Settings().Enabled)
         return false;
+    if (next.Phase == GuildPhase::Managed && (before != GuildPhase::Creating || !_createdGuilds.count(next.Slot) ||
+                                              _createdGuilds.at(next.Slot) != next.Guild))
+        return false;  // Interrupted founding uses the explicit recovery capability.
     _transaction.emplace(_store.Save(next, before));
     _transaction->AfterComplete(
         [this](bool success)
@@ -274,7 +277,8 @@ GuildCandidate GuildRuntime::Candidate(uint32 lowGuid) const
     c.Reason = "eligible_online";
     return c;
 }
-GuildView GuildRuntime::Inspect(GuildIntent const& m) const
+GuildView GuildRuntime::Inspect(GuildIntent const& m) const { return InspectOwnership(m, false); }
+GuildView GuildRuntime::InspectOwnership(GuildIntent const& m, bool recovery) const
 {
     GuildView view;
     if (!OnWorldThread())
@@ -289,8 +293,10 @@ GuildView GuildRuntime::Inspect(GuildIntent const& m) const
         return view;
     }
     auto recorded = _intents.find(m.Slot);
-    if (recorded == _intents.end() || recorded->second.Phase != m.Phase || recorded->second.Guild != m.Guild ||
+    if (recorded == _intents.end() || recorded->second.Phase != m.Phase ||
+        ((!recovery || recorded->second.Guild) && recorded->second.Guild != m.Guild) ||
         recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
+        recorded->second.Faction != m.Faction || recorded->second.StageRevision != m.StageRevision ||
         recorded->second.Name != m.Name || recorded->second.StageRequest != m.StageRequest ||
         !recorded->second.StageVerified)
     {
@@ -311,7 +317,7 @@ GuildView GuildRuntime::Inspect(GuildIntent const& m) const
         view.Reason = "human_managed_guild";
         return view;
     }
-    if (m.Phase != GuildPhase::Managed || guild->GetName() != m.Name || view.Leader != m.Founder ||
+    if ((!recovery && m.Phase != GuildPhase::Managed) || guild->GetName() != m.Name || view.Leader != m.Founder ||
         !guild->GetMember(guild->GetLeaderGUID()))
     {
         view.Reason = "ownership_identity_mismatch";
@@ -396,24 +402,166 @@ uint32 GuildRuntime::Create(GuildIntent const& m)
     auto recorded = _intents.find(m.Slot);
     if (recorded == _intents.end() || recorded->second.Phase != GuildPhase::Creating ||
         recorded->second.Founder != m.Founder || recorded->second.Account != m.Account ||
+        recorded->second.Faction != m.Faction || recorded->second.StageRevision != m.StageRevision ||
         recorded->second.Name != m.Name || recorded->second.StageRequest != m.StageRequest ||
         !recorded->second.StageVerified)
         return 0;
+    auto created = _createdGuilds.find(m.Slot);
+    if (created != _createdGuilds.end())
+        return created->second;
     auto c = Candidate(m.Founder);
     if (!Ready() || _director.Settings().DryRun || m.Phase != GuildPhase::Creating || !c.Available || !c.Online ||
         c.Enrollment.State != EnrollmentState::Pending || c.Enrollment.Guild || !m.StageVerified ||
         !c.Enrollment.AccountIsRandomBot || c.Enrollment.Account != m.Account || c.Faction != m.Faction || !c.Class ||
         c.Class > 11 || !(_director.Settings().ClassMask & (1u << (c.Class - 1))) ||
-        !ObjectMgr::IsValidCharterName(m.Name) || sGuildMgr->GetGuildByName(m.Name))
+        Runtime().Cache().Reserved() != m.Founder || !ObjectMgr::IsValidCharterName(m.Name) ||
+        sGuildMgr->GetGuildByName(m.Name))
         return 0;
     auto guild = std::make_unique<Guild>();
     auto* founder = ObjectAccessor::FindConnectedPlayer(ObjectGuid::Create<HighGuid::Player>(m.Founder));
-    if (!founder || !guild->Create(founder, m.Name))
+    if (!founder || !_creationAttempts.insert(m.Slot).second || !guild->Create(founder, m.Name))
         return 0;
     uint32 id = guild->GetId();
     sGuildMgr->AddGuild(guild.release());
+    _createdGuilds.emplace(m.Slot, id);
     Runtime().Invalidate(m.Founder);
     return id;
+}
+bool GuildRuntime::Durable(GuildIntent const& m)
+{
+    if (!Ready())
+        return false;
+    auto recorded = _intents.find(m.Slot);
+    if (recorded == _intents.end() || !_createdGuilds.count(m.Slot) || _createdGuilds.at(m.Slot) != m.Guild)
+        return false;
+    auto proof = recorded->second;
+    proof.Guild = m.Guild;
+    if (!RecoveryRejection(proof).empty())
+        return false;
+    if (_durableGuild == m.Guild)
+        return true;
+    _query.emplace(_store.Created(m).WithPreparedCallback(
+        [this, id = m.Guild](PreparedQueryResult result)
+        {
+            if (!result)
+                ++_failures;
+            else if (result->Fetch()[0].Get<uint64>())
+                _durableGuild = id;
+        }));
+    return false;
+}
+std::string GuildRuntime::RecoveryApproval(GuildIntent const& m)
+{
+    return "APPROVE:" + std::to_string(m.Slot) + ":" + std::to_string(m.Guild) + ":" + std::to_string(m.Founder) + ":" +
+           std::to_string(m.Account) + ":" + m.StageRequest;
+}
+std::string GuildRuntime::RecoveryRejection(GuildIntent const& m) const
+{
+    if (m.Phase != GuildPhase::Creating && m.Phase != GuildPhase::Quarantined)
+        return "recovery_requires_creating_or_quarantined_intent";
+    if (!m.StageVerified)
+        return "exact_stage_receipt_missing";
+    auto view = InspectOwnership(m, true);
+    if (!view.Safe)
+        return view.Reason;
+    // This recovery capability covers an interrupted founding only. Additional
+    // members need separate review rather than implicitly adopting a roster.
+    if (view.Members != 1)
+        return "recovery_requires_only_founder_member";
+    auto c = Candidate(m.Founder);
+    if (c.Enrollment.State != EnrollmentState::Pending || c.Enrollment.Revision != m.StageRevision + 1)
+        return "recovery_requires_exact_pending_revision";
+    return {};
+}
+std::string GuildRuntime::RecoveryDiagnosis(uint32 slot, uint32 guild)
+{
+    if (!OnWorldThread() || !_loaded || !_opened)
+        return "recovery reason=ownership_snapshot_unavailable; nothing_written";
+    auto found = _intents.find(slot);
+    if (found == _intents.end() || !guild)
+        return "recovery reason=missing_explicit_intent_or_guild; nothing_written";
+    auto m = found->second;
+    m.Guild = guild;
+    auto reason = RecoveryRejection(m);
+    auto guid = ObjectGuid::Create<HighGuid::Player>(m.Founder);
+    auto* entry = sCharacterCache->GetCharacterCacheByGuid(guid);
+    auto c = Candidate(m.Founder);
+    auto* actual = sGuildMgr->GetGuildById(guild);
+    std::ostringstream out;
+    out << "recovery slot=" << slot << " guild=" << guild << " intended_name=" << m.Name << " founder=" << m.Founder
+        << " founder_name=" << (entry ? entry->Name : "unknown") << " account=" << m.Account
+        << " observed_account=" << (entry ? entry->AccountId : 0) << " faction=" << m.Faction
+        << " observed_faction=" << c.Faction << " phase=" << PhaseName(m.Phase)
+        << " recorded_guild=" << found->second.Guild << " state=" << StateName(c.Enrollment.State)
+        << " revision=" << c.Enrollment.Revision << " dedicated_type1=" << c.Enrollment.AccountIsRandomBot
+        << " stage_verified=" << m.StageVerified << " stage_request=" << m.StageRequest
+        << " expected=" << m.StageRevision << " resulting=" << m.StageRevision + 1
+        << " actual_name=" << (actual ? actual->GetName() : "missing")
+        << " leader=" << (actual ? actual->GetLeaderGUID().GetCounter() : 0)
+        << " members=" << (actual ? actual->GetMemberCount() : 0)
+        << " founder_membership=" << (actual && actual->GetMember(guid))
+        << " identity_valid=" << c.Enrollment.IdentityValid << " world_proof=" << (reason.empty() ? "verified" : reason)
+        << " durable_membership="
+        << (_diagnosedGuild == guild ? (_diagnosedDurable ? "observed" : "not_observed") : "not_checked")
+        << " approval=" << RecoveryApproval(m) << "; nothing_written; all proof rechecked on recovery";
+    if (Ready())
+        _query.emplace(_store.Created(m).WithPreparedCallback(
+            [this, guild](PreparedQueryResult result)
+            {
+                _diagnosedGuild = guild;
+                _diagnosedDurable = result && result->Fetch()[0].Get<uint64>();
+            }));
+    return out.str();
+}
+std::string GuildRuntime::Recover(uint32 slot, uint32 guild, std::string const& founderName,
+                                  std::string const& approval)
+{
+    if (!_allowRecovery || !Ready())
+        return "recovery reason=runtime_busy_or_unready; nothing_queued";
+    auto found = _intents.find(slot);
+    if (found == _intents.end() || !guild)
+        return "recovery reason=missing_explicit_intent_or_guild; nothing_queued";
+    auto m = found->second;
+    m.Guild = guild;
+    if (approval != RecoveryApproval(m))
+        return "recovery reason=explicit_exact_approval_required; nothing_queued";
+    auto* entry = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid::Create<HighGuid::Player>(m.Founder));
+    if (!entry || entry->Name != founderName)
+        return "recovery reason=founder_name_mismatch; nothing_queued";
+    if (m.Phase == GuildPhase::Managed && found->second.Guild == guild && Inspect(m).Safe)
+        return "recovery already_managed; nothing_queued";
+    auto reason = RecoveryRejection(m);
+    if (!reason.empty())
+        return "recovery reason=" + reason + "; nothing_queued";
+    // A fresh async read precedes the guarded transaction; the callback runs
+    // on the world thread and rechecks current account/control/membership facts.
+    _query.emplace(_store.Created(m).WithPreparedCallback(
+        [this, m, founderName, approval](PreparedQueryResult result) mutable
+        {
+            auto current = _intents.find(m.Slot);
+            auto* founder = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid::Create<HighGuid::Player>(m.Founder));
+            if (!result || !result->Fetch()[0].Get<uint64>() || !Runtime().ActivityEnabled() || !_allowRecovery ||
+                !_director.Settings().Enabled || !Runtime().ActivityReady() || !_loaded || _needLoad ||
+                _queryAge > 30000 || current == _intents.end() || current->second.Phase != m.Phase || !founder ||
+                founder->Name != founderName || !RecoveryRejection(m).empty())
+            {
+                LOG_ERROR("module", "autonomy recovery slot={} rejected; Pending/quarantine retained", m.Slot);
+                return;
+            }
+            m.Reason = "operator recovery " + approval;
+            _transaction.emplace(_store.Recover(m, founderName));
+            _transaction->AfterComplete(
+                [this, slot = m.Slot](bool success)
+                {
+                    if (!success)
+                        ++_failures;
+                    LOG_INFO("module", "autonomy recovery slot={} transaction_ack={}; readback required", slot,
+                             success);
+                    _needLoad = true;
+                    _loaded = false;
+                });
+        }));
+    return "recovery proof_check_queued; inspect audit for durable outcome; no guild API called";
 }
 std::string GuildRuntime::Audit(uint32 id) const
 {

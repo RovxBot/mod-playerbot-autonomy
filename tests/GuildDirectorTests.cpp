@@ -121,7 +121,76 @@ int main()
             break;
     }
     failure.Flush();
+    failure.Step(failed);
     assert(failure.Ledger[1].Phase == GuildPhase::Quarantined && failure.Creates == 0 && !failure.Reserved);
+    // Readiness consumed almost the old lifetime, but a newly entered creation
+    // phase receives its own bounded visibility window.
+    Port delayed;
+    GuildDirector lag(delayed);
+    lag.Configure(Enabled());
+    while (delayed.Ledger.empty() || !delayed.Ledger.at(1).StageVerified)
+        delayed.Step(lag);
+    delayed.Loaded = false;
+    lag.Update(170000);
+    delayed.Loaded = true;
+    delayed.DurableGuild = false;
+    while (!delayed.Creates)
+        delayed.Step(lag);
+    delayed.Step(lag, 8);
+    assert(delayed.Ledger.at(1).Phase == GuildPhase::Creating && delayed.Creates == 1 && delayed.Reserved);
+    // Persistence cannot even be scheduled after Create. The identity and lease
+    // survive, and the normal guilded candidate cannot cause a second Create.
+    delayed.DurableGuild = true;
+    delayed.SaveWorks = false;
+    delayed.Step(lag, 5);
+    assert(delayed.Creates == 1 && delayed.Reserved && !delayed.Queued);
+    delayed.SaveWorks = true;
+    delayed.Step(lag);  // scheduled is not durable
+    assert(delayed.Reserved && delayed.Queued);
+    delayed.Step(lag);
+    assert(delayed.Ledger.at(1).Phase == GuildPhase::Managed && delayed.Creates == 1 && !delayed.Reserved);
+    // Visibility never arrives: quarantine retains the created guild identity
+    // and blocks new slots even after cooldowns and restart.
+    Port invisible;
+    GuildDirector missingCommit(invisible);
+    missingCommit.Configure(Enabled());
+    invisible.DurableGuild = false;
+    invisible.Step(missingCommit, 200);
+    invisible.Flush();
+    invisible.Step(missingCommit);
+    assert(invisible.Creates == 1 && invisible.Ledger.size() == 1 && !invisible.Reserved);
+    assert(invisible.Ledger.at(1).Phase == GuildPhase::Quarantined && invisible.Ledger.at(1).Guild == 101);
+    GuildDirector coldCreate(invisible);
+    coldCreate.Configure(Enabled());
+    invisible.Step(coldCreate, 200);
+    assert(invisible.Creates == 1 && invisible.Ledger.size() == 1);
+    invisible.Ledger[2] = {2, 2, 102, 0, 0, GuildPhase::Planned, "Amber Covenant", "already queued"};
+    invisible.Step(coldCreate, 200);
+    assert(invisible.Creates == 1 && invisible.Ledger.at(2).Phase == GuildPhase::Planned);
+    // A readiness stall remains bounded by the total job cap. Lease renewal
+    // cannot extend the intent indefinitely, even if phase proof later arrives.
+    Port stalled;
+    GuildDirector bounded(stalled);
+    bounded.Configure(Enabled());
+    while (stalled.Ledger.empty() || !stalled.Reserved)
+        stalled.Step(bounded);
+    stalled.Loaded = false;
+    bounded.Update(600000);
+    stalled.Loaded = true;
+    stalled.Step(bounded, 2);
+    assert(stalled.Ledger.at(1).Phase == GuildPhase::Quarantined && !stalled.Reserved && !stalled.Creates);
+    Port failedApi;
+    GuildDirector apiOnce(failedApi);
+    apiOnce.Configure(Enabled());
+    while (failedApi.Ledger.empty() || failedApi.Ledger.at(1).Phase != GuildPhase::Creating)
+    {
+        failedApi.Step(apiOnce);
+        failedApi.Flush();
+    }
+    failedApi.CreateWorks = false;
+    failedApi.SaveWorks = false;
+    failedApi.Step(apiOnce, 10);
+    assert(failedApi.Creates == 1);  // Even failed Create + unschedulable quarantine cannot repeat the API.
     settings.MaxMembers = 0;
     director.Configure(settings);
     assert(!director.Settings().Enabled);

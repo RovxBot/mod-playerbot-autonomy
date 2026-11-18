@@ -43,7 +43,7 @@ class EnrollmentMySQLTests(unittest.TestCase):
             # Minimal engine-boundary fixtures, never copies of a private world DB.
             cur.execute("DROP TABLE IF EXISTS characters")
             cur.execute(
-                "CREATE TABLE IF NOT EXISTS characters (guid INT UNSIGNED PRIMARY KEY, account INT UNSIGNED, deleteDate BIGINT NULL, online TINYINT DEFAULT 0, level INT DEFAULT 41, money INT DEFAULT 12345) ENGINE=InnoDB"
+                "CREATE TABLE IF NOT EXISTS characters (guid INT UNSIGNED PRIMARY KEY, account INT UNSIGNED, deleteDate BIGINT NULL, online TINYINT DEFAULT 0, level INT DEFAULT 41, money INT DEFAULT 12345, name VARCHAR(12) DEFAULT 'Fixture', race TINYINT UNSIGNED DEFAULT 1) ENGINE=InnoDB"
             )
             cur.execute(
                 "CREATE TABLE IF NOT EXISTS guild_member (guid INT UNSIGNED PRIMARY KEY, guildid INT UNSIGNED) ENGINE=InnoDB"

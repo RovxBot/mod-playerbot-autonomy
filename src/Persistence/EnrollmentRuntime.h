@@ -20,6 +20,7 @@ struct RuntimeCounters
     uint64 Replayed = 0;
     uint64 Rejected = 0;
     uint64 ExpiredReservations = 0;
+    uint64 Refreshes = 0;
 };
 
 enum class EnrollmentValidation
@@ -80,7 +81,9 @@ public:
     void Configure(bool enabled);
     bool ActivityEnabled() const { return _activityEnabled; }
     bool Idle() const { return !_request && !_query && !_transaction && _cache.Ready(); }
+    bool ActivityReady() const { return !_request && !_transaction && _cache.Ready(); }
     bool Reserve(uint32 guid);
+    bool RenewReservation(uint32 guid);
     bool PrepareOffline(uint32 guid);
     bool HandoffLogin(uint32 guid);
     void Release(uint32 guid);
@@ -89,15 +92,7 @@ public:
     void Update(uint32 diff);
     void Stop();
     bool Submit(TransitionRequest request);
-    void Invalidate(uint32 guid)
-    {
-        _cache.Invalidate(guid);
-        if (OnWorldThread())
-        {
-            _cursor = 0;
-            _needLoad = true;
-        }
-    }
+    void Invalidate(uint32 guid) { _cache.Invalidate(guid); }
     EnrollmentCache& Cache() { return _cache; }
     RuntimeCounters const& Counters() const { return _counters; }
     bool ProtectionAvailable() const;
@@ -106,7 +101,7 @@ public:
 
 private:
     EnrollmentDiagnosis Observe(uint32 guid, EnrollmentRequest action) const;
-    void LoadPage();
+    void LoadPage(uint32 refresh = 0);
     void CheckSchema();
     void LookupReceipt(bool afterCommit);
     void Fail();
@@ -124,6 +119,10 @@ private:
     bool _needLoad = true;
     uint64 _configuration = 0;
     uint32 _cursor = 0;
+    uint32 _dirtyCursor = 0;
+    bool _refreshTurn = true;
+    bool _priorityRefresh = true;
+    uint32 _untilRefresh = 0;
     uint32 _untilSweep = 0;
     uint32 _queryAge = 0;
     uint32 _retryIn = 0;
@@ -131,6 +130,7 @@ private:
     std::optional<QueryCallback> _query;
     std::optional<TransactionCallback> _transaction;
     std::optional<TransitionRequest> _request;
+    bool _receiptAfterCommit = false;
     EnrollmentRecord _before;
     std::vector<uint32> _orphans;
     std::string _databaseInfo;

@@ -13,6 +13,7 @@
 
 #include "CoreQueryResult.h"
 #include "MySQLHacks.h"
+inline bool FakeLostCommitAcknowledgement = false;
 
 class QueryCallback
 {
@@ -184,7 +185,7 @@ public:
             }
         }
         Raw("COMMIT");
-        return TransactionCallback(true);
+        return TransactionCallback(!FakeLostCommitAcknowledgement);
     }
     void Raw(std::string const& sql)
     {
