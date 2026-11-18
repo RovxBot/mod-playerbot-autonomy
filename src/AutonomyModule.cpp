@@ -132,10 +132,11 @@ private:
             handler->PSendSysMessage(
                 "Autonomy activities={} protection={} maintenance_v1={} ready={} pages={} rows={} "
                 "pending_observations={} orphan_observations={} commits={} "
-                "replays={} rejected={} failures={} expired_reservations={}",
+                "replays={} rejected={} failures={} expired_reservations={} point_refreshes={} dirty_guids={}",
                 runtime.ActivityEnabled(), runtime.Cache().Enabled(), runtime.ProtectionAvailable(),
                 runtime.Cache().Ready(), counts.Pages, counts.Rows, counts.Pending, counts.Orphans, counts.Committed,
-                counts.Replayed, counts.Rejected, counts.Failures, counts.ExpiredReservations);
+                counts.Replayed, counts.Rejected, counts.Failures, counts.ExpiredReservations, counts.Refreshes,
+                runtime.Cache().DirtyCount());
             return true;
         }
         TransitionRequest request;

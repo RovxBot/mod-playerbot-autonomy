@@ -61,6 +61,7 @@ public:
         record.Guid = guid;
         record.IdentityValid = false;
         _invalidations[guid] = ++_version;
+        _dirty.insert(guid);
     }
 
     std::uint64_t Version() const
@@ -77,7 +78,23 @@ public:
         {
             _records[record.Guid] = record;
             _keys.insert(record.Guid);
+            if (record.IdentityValid)
+                _dirty.erase(record.Guid);
+            else
+                _dirty.insert(record.Guid);
         }
+    }
+
+    std::uint32_t NextDirty(std::uint32_t cursor) const
+    {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        auto next = _dirty.upper_bound(cursor);
+        return next == _dirty.end() ? 0 : *next;
+    }
+    std::size_t DirtyCount() const
+    {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        return _dirty.size();
     }
 
     void SetActivityEnabled(bool enabled) { _activity.store(enabled, std::memory_order_release); }
@@ -159,6 +176,7 @@ private:
     std::atomic<bool> _ready{false};
     mutable std::shared_mutex _mutex;
     std::set<std::uint32_t> _keys;
+    std::set<std::uint32_t> _dirty;
     std::unordered_map<std::uint32_t, EnrollmentRecord> _records;
     std::unordered_map<std::uint32_t, std::uint64_t> _invalidations;
     std::uint64_t _version = 0;

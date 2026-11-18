@@ -45,6 +45,8 @@ private:
         s.CooldownMs = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.GuildDirector.FoundingCooldownMs", 60000);
         s.ClassMask = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.GuildDirector.ClassMask", 0x5ff);
         PlayerbotAutonomy::Guilds().Configure(s);
+        PlayerbotAutonomy::Guilds().ConfigureRecovery(
+            sConfigMgr->GetOption<bool>("PlayerbotAutonomy.AllowGuildRecoveryCommands", false));
         PlayerbotAutonomy::RecruitmentSettings r;
         r.Enabled = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Recruitment.Enable", false);
         r.DryRun = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Recruitment.DryRun", true);
@@ -104,6 +106,30 @@ private:
             if (!number(guid) || !guid || !number(slot) || (in >> extra))
                 return false;
             handler->SendSysMessage(PlayerbotAutonomy::Guilds().Plan(guid, slot));
+            return true;
+        }
+        if (action == "recovery-diagnose" || action == "recover")
+        {
+            uint32 slot = 0, guild = 0;
+            if (!number(slot) || !slot || !number(guild) || !guild)
+                return false;
+            if (action == "recovery-diagnose")
+            {
+                if (in >> extra)
+                    return false;
+                handler->SendSysMessage(PlayerbotAutonomy::Guilds().RecoveryDiagnosis(slot, guild));
+                return true;
+            }
+            std::string founderName, approval;
+            if (!(in >> founderName >> approval) || (in >> extra))
+                return false;
+            if (!sConfigMgr->GetOption<bool>("PlayerbotAutonomy.AllowGuildRecoveryCommands", false))
+            {
+                handler->SendSysMessage(
+                    "Recovery writes disabled; operator must explicitly enable AllowGuildRecoveryCommands.");
+                return true;
+            }
+            handler->SendSysMessage(PlayerbotAutonomy::Guilds().Recover(slot, guild, founderName, approval));
             return true;
         }
         if (action == "recruit-plan")

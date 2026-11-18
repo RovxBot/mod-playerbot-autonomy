@@ -43,10 +43,20 @@ int main()
     cache.Put(record);
     auto const oldSnapshot = cache.Version();
     cache.Invalidate(1);
+    assert(cache.DirtyCount() == 1 && cache.NextDirty(0) == 1);
     cache.PutFromSnapshot(record, oldSnapshot);
     assert(cache.ShouldBlock(1));  // guild/account mutation beats an in-flight old read
+    assert(cache.DirtyCount() == 1);
     cache.PutFromSnapshot(record, cache.Version());
     assert(!cache.ShouldBlock(1));
+    assert(cache.DirtyCount() == 0);
+    cache.Invalidate(1);
+    auto const pointRead = cache.Version();
+    cache.Invalidate(1);  // Another login while the targeted refresh is in flight.
+    cache.PutFromSnapshot(record, pointRead);
+    assert(cache.ShouldBlock(1) && cache.DirtyCount() == 1);
+    cache.PutFromSnapshot(record, cache.Version());
+    assert(!cache.ShouldBlock(1) && cache.DirtyCount() == 0);
     cache.SetReady(false);
     assert(cache.ShouldBlock(1));
     cache.SetEnabled(false);

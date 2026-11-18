@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "CoreFakes.h"
+#include "GuildFakes.h"
 
 constexpr int32 SEC_ADMINISTRATOR = 3;
 namespace rbac
@@ -83,9 +84,6 @@ public:
     virtual void OnUpdate(uint32) {}
     virtual void OnAfterConfigLoad(bool) {}
     virtual void OnAfterUnloadAllMaps() {}
-};
-struct Guild
-{
 };
 class GuildScript
 {

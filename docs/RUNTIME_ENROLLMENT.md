@@ -69,7 +69,7 @@ Diagnosis reports both broad factory membership and dedicated eligibility. The
 supplied Trela identity is covered with eligible/ineligible fixtures; live account
 assignment, online state and historical rejection remain unverified.
 
-A reservation holds one GUID for at most 120 seconds, vetoes competing bot logins
+A reservation holds one GUID for 120 seconds without owner renewal, vetoes competing bot logins
 and maintenance, waits for in-flight login cleanup, and uses normal
 `LogoutPlayerBot` save/logout before offline STAGE. No code writes
 `characters.online`. Handoff to ordinary bot login is possible only after a
@@ -209,6 +209,13 @@ The runtime does not infer autonomous guild ownership from a leader account.
 Human-managed guilds are never commanded or changed by these operations.
 
 ## Cache and reconciliation
+
+The [founding recovery follow-up](GUILD_FOUNDING_RECOVERY.md) adds bounded
+director-owned lease renewal and targeted, versioned dirty-GUID refreshes.
+Login/guild events no longer restart a full scan; periodic pages still progress.
+Background reads permit activity scheduling, with at most one enrollment request
+waiting for the current read before revalidation and commit. Per-GUID uncertainty
+retains maintenance protection; DB/schema/timeouts still fail closed globally.
 
 The world thread owns scheduling and writes. Map-thread queries take a short
 shared lock and copy one GUID entry; they never call SQL, read engine pointers,

@@ -14,6 +14,10 @@
 # Rollback must retain this protection or keep the realm stopped. Preserve SQL.
 PlayerbotAutonomy.Enable = 0
 
+# Explicit console/administrator-RA interrupted-founding recovery only. See
+# docs/GUILD_FOUNDING_RECOVERY.md. Diagnostics do not require this write gate.
+PlayerbotAutonomy.AllowGuildRecoveryCommands = 0
+
 # Separate operator authorization switch for the stage/confirm/cancel/retire
 # CLI/RA/SOAP commands. 0 is the safe default even if protection is enabled.
 # Authenticated administrators only; never expose these mutations to players.
@@ -25,7 +29,8 @@ PlayerbotAutonomy.AllowEnrollmentCommands = 0
 # enrollment handoff v1. No existing guild is automatically adopted or deleted.
 # Apply the guild migration before enabling, including for dry-run startup audit.
 PlayerbotAutonomy.GuildDirector.Enable = 0
-# 1 plans only: no reservation, logout/login, lifecycle or guild writes.
+# 1 makes automatic director work read-only. Explicit approved recovery uses
+# its separate AllowGuildRecoveryCommands write gate; see the recovery runbook.
 PlayerbotAutonomy.GuildDirector.DryRun = 1
 # 0..64 slots; quarantined/uncertain intents consume their slot until reviewed.
 PlayerbotAutonomy.GuildDirector.GuildCount = 8
@@ -38,7 +43,8 @@ PlayerbotAutonomy.GuildDirector.MaxMembers = 70
 PlayerbotAutonomy.GuildDirector.CandidatesPerTick = 16
 # 100..60000 ms per controller pass; one managed roster audit (<=200) per pass.
 PlayerbotAutonomy.GuildDirector.IntervalMs = 1000
-# 1000..86400000 ms between new founding intents. Recovery timeout 180 seconds.
+# 1000..86400000 ms between new founding intents. Preparation milestones allow
+# 180 seconds, creation visibility 90 seconds, total enabled job cap 600 seconds.
 PlayerbotAutonomy.GuildDirector.FoundingCooldownMs = 60000
 # WotLK playable class bits: bit(classId-1), excludes unused class 10.
 PlayerbotAutonomy.GuildDirector.ClassMask = 1535

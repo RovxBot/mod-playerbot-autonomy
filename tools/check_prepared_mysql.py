@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_PIN = "0554bcdd664ff6d85291ca2a10fd31d3e37e89e6"
-PLAYERBOTS_PIN = "422db5a50b429db01ab481ba597b928c87b0eb98"
+PLAYERBOTS_PIN = "696a009ceeeb400cfe40eedcd8a6c9333bdc1b59"
 
 
 def main():
@@ -77,6 +77,7 @@ def main():
         sources = [ROOT / "tests/PreparedMySQLTests.cpp", ROOT / "src/Persistence/EnrollmentStore.cpp",
                    ROOT / "src/Persistence/EnrollmentRuntime.cpp", ROOT / "src/Persistence/EnrollmentTransition.cpp",
                    ROOT / "src/Guild/GuildStore.cpp", ROOT / "src/Guild/GuildDirector.cpp",
+                   ROOT / "src/Guild/GuildRuntime.cpp",
                    ROOT / "src/Guild/RecruitmentDirector.cpp", database / "Field.cpp", database / "QueryResult.cpp"]
         # The pinned core uses std::type_identity. Its decoder requires C++20;
         # module-only policies/controllers remain covered in C++17 and C++20.

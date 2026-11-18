@@ -12,6 +12,8 @@ enum GuildStatement : uint32
     GuildInsert,
     GuildChange,
     GuildAudit,
+    GuildCreated,
+    GuildRecover,
     RecruitLoad,
     RecruitInsert,
     RecruitChange,
@@ -38,6 +40,8 @@ public:
     TransactionCallback SaveRecruitment(RecruitmentIntent const& intent, std::optional<RecruitmentPhase> before);
     QueryCallback AuditPage(uint32 cursor);
     TransactionCallback Save(GuildIntent const& intent, std::optional<GuildPhase> before);
+    QueryCallback Created(GuildIntent const& intent);
+    TransactionCallback Recover(GuildIntent const& intent, std::string const& founderName);
 
 protected:
     MySQLConnection* CreateConnection(MySQLConnectionInfo& info) override { return new GuildConnection(info); }

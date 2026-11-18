@@ -1,5 +1,6 @@
 #include "EnrollmentRuntime.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <sstream>
@@ -161,9 +162,20 @@ void EnrollmentRuntime::Update(uint32 diff)
 {
     if (!OnWorldThread())
         return;
+    _untilRefresh = diff >= _untilRefresh ? 0 : _untilRefresh - diff;
+    if (_cache.Ready() && !_needLoad)
+    {
+        if (diff >= _untilSweep)
+        {
+            _cursor = 0;
+            _needLoad = true;
+        }
+        else
+            _untilSweep -= diff;
+    }
     if (_cache.Reserved())
     {
-        _reservationAge += diff;
+        _reservationAge = std::min(120000u, _reservationAge + std::min(diff, 120000u));
         if (_reservationAge >= 120000)
         {
             ++_counters.ExpiredReservations;
@@ -219,7 +231,7 @@ void EnrollmentRuntime::Update(uint32 diff)
     }
     if (_request)
     {
-        LookupReceipt(true);
+        LookupReceipt(_receiptAfterCommit);
         return;
     }
     if (!_orphans.empty())
@@ -235,26 +247,38 @@ void EnrollmentRuntime::Update(uint32 diff)
             });
         return;
     }
+    // Startup must finish even under continuous login churn. Later sweeps and
+    // point refreshes alternate; neither can rewind or starve the other.
+    auto dirty = _cache.NextDirty(_dirtyCursor);
+    if (!dirty)
+        dirty = _cache.NextDirty(0);
+    auto reserved = _cache.Reserved();
+    bool priority = _priorityRefresh && reserved && !_cache.Get(reserved).IdentityValid;
+    if (priority)
+        dirty = reserved;
+    if (_cache.Ready() && dirty && !_untilRefresh && (!_needLoad || _refreshTurn))
+    {
+        if (!priority)
+            _dirtyCursor = dirty;
+        _priorityRefresh = !_priorityRefresh;
+        _refreshTurn = false;
+        _untilRefresh = 200;
+        LoadPage(dirty);
+        return;
+    }
     if (_needLoad)
     {
+        _refreshTurn = true;
         LoadPage();
         return;
     }
-    if (diff >= _untilSweep)
-    {
-        _cursor = 0;
-        _needLoad = true;
-        _untilSweep = SweepInterval;
-    }
-    else
-        _untilSweep -= diff;
 }
 
-void EnrollmentRuntime::LoadPage()
+void EnrollmentRuntime::LoadPage(uint32 refresh)
 {
     auto const configuration = _configuration;
     auto const version = _cache.Version();
-    auto callback = [this, configuration, version](PreparedQueryResult result)
+    auto callback = [this, configuration, version, refresh](PreparedQueryResult result)
     {
         if (configuration != _configuration)
             return;
@@ -263,7 +287,10 @@ void EnrollmentRuntime::LoadPage()
             Fail();
             return;
         }
-        ++_counters.Pages;
+        if (refresh)
+            ++_counters.Refreshes;
+        else
+            ++_counters.Pages;
         uint32 rows = 0;
         do
         {
@@ -272,6 +299,8 @@ void EnrollmentRuntime::LoadPage()
                 break;
             EnrollmentRecord record;
             record.Guid = fields[0].Get<uint32>();
+            if (refresh && record.Guid != refresh)
+                break;  // Deleted/nonexistent GUID remains invalid and protected.
             record.Account = fields[1].IsNull() ? 0 : fields[1].Get<uint32>();
             record.Guild = fields[2].Get<uint32>();
             record.State = ParseState(fields[4].Get<std::string>());
@@ -308,11 +337,12 @@ void EnrollmentRuntime::LoadPage()
             if (record.State == EnrollmentState::Pending)
                 ++_counters.Pending;
             _cache.PutFromSnapshot(record, version);
-            _cursor = record.Guid;
+            if (!refresh)
+                _cursor = record.Guid;
             ++rows;
         } while (result->NextRow());
         _counters.Rows += rows;
-        if (rows < PageSize)
+        if (!refresh && rows < PageSize)
         {
             _needLoad = false;
             _untilSweep = SweepInterval;
@@ -323,7 +353,8 @@ void EnrollmentRuntime::LoadPage()
                      _counters.Rows, _counters.Pending, _counters.Orphans, _counters.Failures);
         }
     };
-    _query.emplace(_store.LoadPage(_cursor, PageSize).WithPreparedCallback(std::move(callback)));
+    _query.emplace(_store.LoadPage(refresh ? refresh - 1 : _cursor, refresh ? 1 : PageSize)
+                       .WithPreparedCallback(std::move(callback)));
 }
 
 namespace
@@ -542,7 +573,7 @@ bool EnrollmentRuntime::Submit(TransitionRequest request)
 {
     if (!OnWorldThread())
         return false;
-    if (_request || _query || _transaction || !_activityEnabled || !_cache.Ready() || !ProtectionAvailable() ||
+    if (_request || _transaction || !_activityEnabled || !_cache.Ready() || !ProtectionAvailable() ||
         !ValidRequestId(request.RequestId) || (request.Director && !request.ActorGuid))
     {
         ++_counters.Rejected;
@@ -555,7 +586,9 @@ bool EnrollmentRuntime::Submit(TransitionRequest request)
         return false;
     request.Account = record.Account;
     _request = std::move(request);
-    LookupReceipt(false);
+    _receiptAfterCommit = false;
+    if (!_query)
+        LookupReceipt(false);
     return true;
 }
 
@@ -605,9 +638,7 @@ void EnrollmentRuntime::LookupReceipt(bool afterCommit)
             }
             // Read current state afresh; an old replay must never replace
             // newer enrollment.
-            _cache.SetReady(false);
-            _cursor = 0;
-            _needLoad = true;
+            Invalidate(request.Guid);
             _request.reset();
             return;
         }
@@ -627,16 +658,18 @@ void EnrollmentRuntime::LookupReceipt(bool afterCommit)
         }
         _request->Account = diagnosis.Account;
         _before = diagnosis.Cached;
+        _receiptAfterCommit = true;
         _cache.Invalidate(request.Guid);  // protect until commit and reload,
                                           // including uncertain outcomes
         _transaction.emplace(_store.Commit(*_request, _before));
         _transaction->AfterComplete(
-            [this](bool /*success*/)
+            [](bool /*success*/)
             {
                 // Even a lost COMMIT acknowledgement is resolved by a durable
                 // receipt. The next world tick schedules the read, never a blind
                 // write retry.
-                _cache.SetReady(false);
+                // Only the affected GUID is uncertain. DB health/timeouts still
+                // invalidate global readiness in Update/Fail.
             });
     };
     _query.emplace(_store.FindReceipt(request.RequestId).WithPreparedCallback(std::move(callback)));
@@ -651,16 +684,25 @@ bool EnrollmentRuntime::Reserve(uint32 guid)
     (void)guid;
     return false;
 #else
-    if (!OnWorldThread() || !_activityEnabled || !Idle() ||
+    if (!OnWorldThread() || !_activityEnabled || !ActivityReady() ||
         !Playerbots::AutonomyEnrollment::IsOwner(&EnrollmentLoginVeto))
         return false;
     auto const record = _cache.Get(guid);
     if (!record.IdentityValid || !record.AccountIsRandomBot || record.Guild ||
         record.State == EnrollmentState::Unknown || record.State == EnrollmentState::Persistent)
         return false;
+    if (!_cache.Reserve(guid))
+        return false;
     _reservationAge = 0;
-    return _cache.Reserve(guid);
+    return true;
 #endif
+}
+bool EnrollmentRuntime::RenewReservation(uint32 guid)
+{
+    if (!OnWorldThread() || !_activityEnabled || !guid || _cache.Reserved() != guid)
+        return false;
+    _reservationAge = 0;
+    return true;
 }
 void EnrollmentRuntime::Release(uint32 guid)
 {
@@ -691,7 +733,7 @@ bool EnrollmentRuntime::PrepareOffline(uint32 lowGuid)
 bool EnrollmentRuntime::HandoffLogin(uint32 lowGuid)
 {
 #if defined(AUTONOMY_HAS_ENROLLMENT_V1) && defined(AUTONOMY_HAS_MAINTENANCE_V1)
-    if (!OnWorldThread() || !_activityEnabled || !Idle() || _cache.Reserved() != lowGuid)
+    if (!OnWorldThread() || !_activityEnabled || !ActivityReady() || _cache.Reserved() != lowGuid)
         return false;
     auto const record = _cache.Get(lowGuid);
     if (!record.IdentityValid || record.State != EnrollmentState::Pending || !record.AccountIsRandomBot ||

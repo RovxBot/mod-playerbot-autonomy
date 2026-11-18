@@ -88,3 +88,34 @@ class GuildMySQLTests(enrollment.EnrollmentMySQLTests):
         with self.connection.cursor() as cur:
             cur.execute(SQL['Load'])
             self.assertEqual(cur.fetchone()[-1],0)
+
+    def test_journal_upgrade_preserves_receipts_and_replays(self):
+        self.guild_write('PLANNED')
+        self.guild_write('CREATING', before='PLANNED')
+        self.guild_write('QUARANTINED', before='CREATING')
+        with self.connection.cursor() as cur:
+            columns = 'slot,phase,guild_id,reason,mutation_applied,created_at'
+            cur.execute(f'SELECT {columns} FROM playerbot_autonomy_guild_audit ORDER BY slot,phase')
+            original = cur.fetchall()
+            # Reconstruct the previously deployed module-only journal shape.
+            # Every connection here is restricted to a disposable fixture DB.
+            cur.execute('ALTER TABLE playerbot_autonomy_guild_audit DROP PRIMARY KEY, '
+                        'DROP COLUMN audit_id, DROP INDEX ix_autonomy_guild_phase, ADD PRIMARY KEY(slot,phase)')
+            migration = (Path(__file__).resolve().parents[1] / 'data/sql/db-characters/'
+                         '2026_11_19_00_playerbot_autonomy_guild_journal.sql').read_text()
+            migration = re.sub(r'(?m)^--.*$', '', migration)
+            for _ in range(2):
+                for statement in migration.split(';'):
+                    if statement.strip():
+                        cur.execute(statement)
+                cur.execute(f'SELECT {columns} FROM playerbot_autonomy_guild_audit ORDER BY slot,phase')
+                self.assertEqual(cur.fetchall(), original)
+            cur.execute("INSERT INTO guild VALUES(7,1,'Ashen Vanguard')")
+            cur.execute('INSERT INTO guild_member VALUES(1,7)')
+        self.connection.commit()
+        self.guild_write('MANAGED', before='QUARANTINED', guild=7)
+        self.guild_write('QUARANTINED', before='MANAGED', guild=7)
+        self.assertEqual(self.row("SELECT COUNT(*) FROM playerbot_autonomy_guild_audit "
+                                  "WHERE slot=1 AND phase='QUARANTINED'"), (2,))
+        with self.assertRaises(self.driver.MySQLError):
+            self.guild_write('MANAGED', before='CREATING', guild=7)

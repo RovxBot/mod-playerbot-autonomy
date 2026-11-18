@@ -17,14 +17,16 @@ quarantine governance; character protection remains intact.
 ## Activation and dependency order
 
 Use core test-staging `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6` and playerbots
-master companion `422db5a50b429db01ab481ba597b928c87b0eb98` (separate owner-fork PR).
+master `696a009ceeeb400cfe40eedcd8a6c9333bdc1b59` (merged enrollment handoff).
 Keep dungeon-clear unchanged. Autonomy registers M1 protection before the guild
 script. Guild work waits for complete M1 and ownership snapshots and the startup
 existing-guild audit. Actual combined script/include/link order remains a manual
 build/startup gate.
 
-Apply both 15-November M1 migrations first, then
-`2026_11_18_00_playerbot_autonomy_guild.sql`. The new module-owned InnoDB tables
+Apply both 15-November M1 migrations first, then the 18-November guild and
+recruitment migrations and `2026_11_19_00_playerbot_autonomy_guild_journal.sql`.
+The journal upgrade preserves history and permits repeated quarantine after
+explicit recovery. The new module-owned InnoDB tables
 store one immutable founding identity per slot and an append-only phase journal.
 Unique founder, name, stage request and managed guild keys exclude duplicate
 intents. The journal's enforced ROW_COUNT CHECK makes CAS/audit failures atomic.
@@ -35,8 +37,11 @@ at a time; an uncertain commit is read back before further action.
 
 Start with `PlayerbotAutonomy.Enable=1`,
 `PlayerbotAutonomy.GuildDirector.Enable=1`, and `GuildDirector.DryRun=1` (full
-prefix `PlayerbotAutonomy.`). Dry run permits reads and planning only: no intent,
-reservation, logout/login, enrollment or guild write. After controlled review,
+prefix `PlayerbotAutonomy.`). Automatic dry run permits reads and planning only:
+no intent, reservation, logout/login, enrollment or guild write. Explicit console
+recovery has a separate approval/write gate and can run while automatic work is
+in dry run; follow [the recovery runbook](GUILD_FOUNDING_RECOVERY.md).
+After controlled review,
 `DryRun=0` authorizes internal founding without manual enrollment or GM/SOAP
 mutation commands. `AllowEnrollmentCommands` may remain 0. Config includes
 count, faction percentage, membership cap, class mask, candidate budget, interval
@@ -70,11 +75,17 @@ An in-process create result is never repeated. Restart in CREATING is ambiguous:
 quarantine the intent, keep the founder Pending and the guild unmanaged, and
 require separate review. A durable MANAGED/Pending pair can automatically
 CONFIRM after revalidation; Persistent remains protected after any guild loss.
-PLANNED restarts resume only with the exact stage receipt. Jobs time out after
-180 seconds of enabled scheduler time and release transient reservations while
-retaining durable protection. DB timeouts wait for the outstanding operation;
+PLANNED restarts resume only with the exact stage receipt. Preparation and
+creation visibility have separate bounded progress windows and a 600-second
+total job cap. Owned reservations renew until the cap and release after durable
+terminal readback; abandoned M1 leases still expire after 120 seconds. See
+[founding race fixes and explicit recovery](GUILD_FOUNDING_RECOVERY.md).
+DB timeouts wait for the outstanding operation;
 there is no blind write retry or automatic CANCEL/RETIRE. Quarantined intents
-continue occupying their slot, preventing uncontrolled replacement creation.
+continue occupying their slot and block subsequent founding, including queued
+intents that have not created a guild. A returned in-process Create may finish
+registration. Explicit recovery requires separate operator approval and exact
+founding proof; it never adopts an unrelated guild.
 
 The complete managed roster is checked at action authorization and at most one
 managed roster per scheduled pass, bounded by the configured cap (hard maximum

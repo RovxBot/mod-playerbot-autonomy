@@ -64,6 +64,7 @@ public:
     virtual bool Stage(GuildIntent const& intent, EnrollmentRecord const& before) = 0;
     virtual bool Login(std::uint32_t guid) = 0;
     virtual std::uint32_t Create(GuildIntent const& intent) = 0;
+    virtual bool Durable(GuildIntent const& intent) = 0;
     virtual bool Confirm(GuildIntent const& intent, EnrollmentRecord const& before) = 0;
 };
 std::uint32_t NextFoundingFaction(GuildSettings const& settings, std::map<std::uint32_t, GuildIntent> const& intents);
@@ -89,7 +90,10 @@ private:
     GuildSettings _settings;
     std::uint32_t _untilStep = 0, _cooldown = 0, _cursor = 0, _reserved = 0, _armed = 0, _created = 0;
     std::uint32_t _jobAge = 0, _jobSlot = 0, _managedCursor = 0;
+    std::uint32_t _phaseAge = 0;
+    unsigned _progress = 0;
     bool _loginRequested = false;
+    bool _createAttempted = false;
     std::uint64_t _considered = 0;
     std::string _last = "disabled";
     std::map<std::string, std::uint64_t> _rejections;
