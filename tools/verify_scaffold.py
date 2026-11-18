@@ -9,6 +9,8 @@ required = [
     "src/Guild/GuildDirector.cpp",
     "src/Guild/GuildRuntime.cpp",
     "src/Guild/GuildStore.cpp",
+    "data/sql/db-characters/2026_11_18_01_playerbot_autonomy_recruitment.sql",
+    "src/Guild/RecruitmentDirector.cpp",
     "AGENTS.md",
     "README.md",
     "CMakeLists.txt",
