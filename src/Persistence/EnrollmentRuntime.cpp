@@ -534,7 +534,7 @@ bool EnrollmentRuntime::Submit(TransitionRequest request)
     if (!OnWorldThread())
         return false;
     if (_request || _query || _transaction || !_activityEnabled || !_cache.Ready() || !ProtectionAvailable() ||
-        !ValidRequestId(request.RequestId))
+        !ValidRequestId(request.RequestId) || (request.Director && !request.ActorGuid))
     {
         ++_counters.Rejected;
         return false;

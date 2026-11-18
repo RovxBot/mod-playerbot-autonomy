@@ -377,8 +377,8 @@ TransactionCallback EnrollmentStore::Commit(TransitionRequest const& request, En
                                            Field(StateName(before.State)),
                                            Field(StateName(durable.State)),
                                            Field(uint64(request.Guild)),
-                                           Field(std::string("AUTHORIZED_ADMIN")),
-                                           Field(uint64(0)),
+                                           Field(std::string(request.Director ? "RECRUITMENT" : "AUTHORIZED_ADMIN")),
+                                           Field(uint64(request.ActorGuid)),
                                            Field(request.Reason),
                                            Field(before.Revision),
                                            Field(durable.Revision)};

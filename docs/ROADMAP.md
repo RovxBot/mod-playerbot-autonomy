@@ -18,6 +18,10 @@ This is the intended delivery sequence, **not a claim of completed functionality
 - **Exit:** verified on live server through several manager cycles and a restart, with both bot classes tested.
 
 ## M2 — Autonomous guilds and activity ownership
+
+The [managed founding candidate](MANAGED_GUILDS.md) implements opt-in founding
+and explicit ownership; its full-server acceptance is still pending.
+
 - Safe recruiting from unguilded population into eligible bot-owned guilds.
 - Durable guild rosters, recruitment caps, activity budgets and member availability.
 - Central scheduler, exclusive activity leases, failure-safe group formation and operations history.

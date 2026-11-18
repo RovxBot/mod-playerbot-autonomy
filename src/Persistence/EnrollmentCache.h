@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <set>
 #include <shared_mutex>
 #include <unordered_map>
 
@@ -43,6 +44,14 @@ public:
     {
         std::unique_lock<std::shared_mutex> lock(_mutex);
         _records[record.Guid] = record;
+        _keys.insert(record.Guid);
+    }
+
+    std::uint32_t NextGuid(std::uint32_t cursor) const
+    {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        auto next = _keys.upper_bound(cursor);
+        return next == _keys.end() ? 0 : *next;
     }
 
     void Invalidate(std::uint32_t guid)
@@ -65,7 +74,10 @@ public:
         std::unique_lock<std::shared_mutex> lock(_mutex);
         auto const changed = _invalidations.find(record.Guid);
         if (changed == _invalidations.end() || changed->second <= version)
+        {
             _records[record.Guid] = record;
+            _keys.insert(record.Guid);
+        }
     }
 
     void SetActivityEnabled(bool enabled) { _activity.store(enabled, std::memory_order_release); }
@@ -146,6 +158,7 @@ private:
     std::atomic<std::uint32_t> _loginBlocked{0};
     std::atomic<bool> _ready{false};
     mutable std::shared_mutex _mutex;
+    std::set<std::uint32_t> _keys;
     std::unordered_map<std::uint32_t, EnrollmentRecord> _records;
     std::unordered_map<std::uint32_t, std::uint64_t> _invalidations;
     std::uint64_t _version = 0;

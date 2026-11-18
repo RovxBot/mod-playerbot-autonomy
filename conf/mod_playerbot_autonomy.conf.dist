@@ -20,3 +20,24 @@ PlayerbotAutonomy.Enable = 0
 # Read-only autonomy status/diagnose do not require this switch. Diagnosis requires
 # administrator-only RA admission (Ra.MinLevel >= 3); see docs/RUNTIME_ENROLLMENT.md.
 PlayerbotAutonomy.AllowEnrollmentCommands = 0
+
+# Internal world-thread founding. Requires master activities ON and playerbots
+# enrollment handoff v1. No existing guild is automatically adopted or deleted.
+# Apply the guild migration before enabling, including for dry-run startup audit.
+PlayerbotAutonomy.GuildDirector.Enable = 0
+# 1 plans only: no reservation, logout/login, lifecycle or guild writes.
+PlayerbotAutonomy.GuildDirector.DryRun = 1
+# 0..64 slots; quarantined/uncertain intents consume their slot until reviewed.
+PlayerbotAutonomy.GuildDirector.GuildCount = 8
+# First floor(GuildCount * percent / 100) slots Alliance; remainder Horde.
+PlayerbotAutonomy.GuildDirector.AlliancePercent = 50
+# 1..200; founders count. Over-cap managed guilds are quarantined, never trimmed.
+PlayerbotAutonomy.GuildDirector.MaxMembers = 70
+# 1..64 GUID candidates per scheduler pass; no per-bot population scans.
+PlayerbotAutonomy.GuildDirector.CandidatesPerTick = 16
+# 100..60000 ms per controller pass; one managed roster audit (<=200) per pass.
+PlayerbotAutonomy.GuildDirector.IntervalMs = 1000
+# 1000..86400000 ms between new founding intents. Recovery timeout 180 seconds.
+PlayerbotAutonomy.GuildDirector.FoundingCooldownMs = 60000
+# WotLK playable class bits: bit(classId-1), excludes unused class 10.
+PlayerbotAutonomy.GuildDirector.ClassMask = 1535
