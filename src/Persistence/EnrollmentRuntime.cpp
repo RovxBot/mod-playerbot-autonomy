@@ -15,8 +15,13 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "RandomPlayerbotMgr.h"
 #include "RoutineMaintenancePolicy.h"
 #define AUTONOMY_HAS_MAINTENANCE_V1 1
+#endif
+#if __has_include("AutonomyEnrollment.h")
+#include "AutonomyEnrollment.h"
+#define AUTONOMY_HAS_ENROLLMENT_V1 1
 #endif
 
 namespace PlayerbotAutonomy
@@ -37,6 +42,7 @@ constexpr uint32 QueryTimeout = 30000;
 }
 
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
+[[maybe_unused]] bool EnrollmentLoginVeto(uint32 guid) { return Runtime().LoginBlocked(guid); }
 bool MaintenanceProvider(uint32 guid, Playerbots::RoutineMaintenance::Action action)
 {
     auto const& cache = Runtime().Cache();
@@ -45,7 +51,7 @@ bool MaintenanceProvider(uint32 guid, Playerbots::RoutineMaintenance::Action act
     if (action == Playerbots::RoutineMaintenance::Action::LegacyGuildAssignment)
         return cache.ShouldBlockLegacyGuildAssignment(guid);
     if (action == Playerbots::RoutineMaintenance::Action::AccountDeletion)
-        return true;
+        return cache.MayContainProtected();
     return cache.ShouldBlock(guid);
 }
 #endif
@@ -61,24 +67,25 @@ void EnrollmentRuntime::Configure(bool enabled)
 {
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
     static_assert(Playerbots::RoutineMaintenance::ContractVersion == 1, "Maintenance contract mismatch");
-    if (enabled && !Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider))
+    if (!Playerbots::RoutineMaintenance::RegisterProvider(&MaintenanceProvider))
         FailStopWithoutProtection("maintenance provider already owned by another module");
 #else
-    if (enabled)
-        FailStopWithoutProtection("required playerbots interface was absent at compilation");
+    (void)enabled;
+    FailStopWithoutProtection("required playerbots interface was absent at compilation");
 #endif
-    // Never publish the enabled state until the process-lifetime veto is
-    // registered. A readiness=false cache then blocks unknown characters.
+#ifdef AUTONOMY_HAS_ENROLLMENT_V1
+    static_assert(Playerbots::AutonomyEnrollment::ContractVersion == 1, "Enrollment contract mismatch");
+    if (!Playerbots::AutonomyEnrollment::Register(&EnrollmentLoginVeto))
+        FailStopWithoutProtection("enrollment login provider already owned by another module");
+#endif
+    _activityEnabled = enabled;
+    _cache.SetActivityEnabled(enabled);
     ++_configuration;
-    _cache.SetEnabled(enabled);
+    _cache.SetEnabled(true);
     _cache.SetReady(false);
     _needLoad = true;
     _cursor = 0;
     _attempted = _opened;
-#ifdef AUTONOMY_HAS_MAINTENANCE_V1
-    if (!enabled)
-        Playerbots::RoutineMaintenance::UnregisterProvider(&MaintenanceProvider);
-#endif
 }
 
 bool EnrollmentRuntime::ProtectionAvailable() const
@@ -124,6 +131,7 @@ void EnrollmentRuntime::CheckSchema()
 void EnrollmentRuntime::Stop()
 {
     _cache.SetReady(false);
+    Release(_cache.Reserved());
     _query.reset();
     _transaction.reset();
     _store.Close();
@@ -152,6 +160,12 @@ void EnrollmentRuntime::Update(uint32 diff)
 {
     if (!OnWorldThread())
         return;
+    if (_cache.Reserved())
+    {
+        _reservationAge += diff;
+        if (_reservationAge >= 120000 && !_request && !_transaction)
+            Release(_cache.Reserved());  // Durable Pending/unknown protection survives transient expiry.
+    }
     if (_cache.Enabled() && !ProtectionAvailable())
         FailStopWithoutProtection("maintenance provider was lost while autonomy remained enabled");
     if (_cache.Enabled() && !_attempted && !_opened)
@@ -259,7 +273,7 @@ void EnrollmentRuntime::LoadPage()
             record.State = ParseState(fields[4].Get<std::string>());
             record.Revision = fields[5].Get<uint64>();
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
-            record.AccountIsRandomBot = sPlayerbotAIConfig.IsInRandomAccountList(record.Account);
+            record.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(record.Account);
 #endif
             record.IdentityValid = record.Account && fields[7].IsNull() &&
                                    (fields[3].IsNull() || fields[3].Get<uint32>() == record.Account);
@@ -416,7 +430,7 @@ EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest
     diagnosis.WorldThread = OnWorldThread();
     if (!diagnosis.WorldThread)
         return diagnosis;  // Never read thread-affine engine state from a foreign thread.
-    diagnosis.Enabled = _cache.Enabled();
+    diagnosis.Enabled = _activityEnabled;
     diagnosis.Ready = _cache.Ready();
     diagnosis.MaintenanceAvailable = ProtectionAvailable();
     diagnosis.Cached = _cache.Get(lowGuid);
@@ -436,8 +450,9 @@ EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest
     diagnosis.Guild = readPlayerFacts ? player->GetGuildId() : diagnosis.CharacterGuild;
     diagnosis.Facts.Current = diagnosis.Cached.State;
 #ifdef AUTONOMY_HAS_MAINTENANCE_V1
+    diagnosis.FactoryRandomAccount = sPlayerbotAIConfig.IsInRandomAccountList(diagnosis.Account);
     diagnosis.RandomAccountChecked = true;
-    diagnosis.Facts.AccountIsRandomBot = sPlayerbotAIConfig.IsInRandomAccountList(diagnosis.Account);
+    diagnosis.Facts.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(diagnosis.Account);
     if (readPlayerFacts)
     {
         auto* ai = GET_PLAYERBOT_AI(player);
@@ -486,6 +501,8 @@ std::string FormatStageDiagnosis(EnrollmentDiagnosis const& diagnosis)
            << " cached_guild=" << diagnosis.Cached.Guild << " cached_state=" << StateName(diagnosis.Cached.State)
            << " cached_revision=" << diagnosis.Cached.Revision << "\nrandom_account="
            << (diagnosis.RandomAccountChecked ? (diagnosis.Facts.AccountIsRandomBot ? "true" : "false") : "unavailable")
+           << " factory_account=" << diagnosis.FactoryRandomAccount
+           << " dedicated_type1_account=" << diagnosis.Facts.AccountIsRandomBot
            << " validation_account=" << diagnosis.Account << " character_cache_account=" << diagnosis.CharacterAccount
            << " character_cache_guild=" << diagnosis.CharacterGuild
            << " character_cache_group_guid=" << diagnosis.CharacterGroupGuid
@@ -501,7 +518,7 @@ bool EnrollmentRuntime::Submit(TransitionRequest request)
 {
     if (!OnWorldThread())
         return false;
-    if (_request || _query || _transaction || !_cache.Enabled() || !_cache.Ready() || !ProtectionAvailable() ||
+    if (_request || _query || _transaction || !_activityEnabled || !_cache.Ready() || !ProtectionAvailable() ||
         !ValidRequestId(request.RequestId))
     {
         ++_counters.Rejected;
@@ -599,5 +616,68 @@ void EnrollmentRuntime::LookupReceipt(bool afterCommit)
             });
     };
     _query.emplace(_store.FindReceipt(request.RequestId).WithPreparedCallback(std::move(callback)));
+}
+}  // namespace PlayerbotAutonomy
+
+namespace PlayerbotAutonomy
+{
+bool EnrollmentRuntime::Reserve(uint32 guid)
+{
+#ifndef AUTONOMY_HAS_ENROLLMENT_V1
+    (void)guid;
+    return false;
+#else
+    if (!OnWorldThread() || !_activityEnabled || !Idle() ||
+        !Playerbots::AutonomyEnrollment::IsOwner(&EnrollmentLoginVeto))
+        return false;
+    auto const record = _cache.Get(guid);
+    if (!record.IdentityValid || !record.AccountIsRandomBot || record.Guild ||
+        record.State == EnrollmentState::Unknown || record.State == EnrollmentState::Persistent)
+        return false;
+    _reservationAge = 0;
+    return _cache.Reserve(guid);
+#endif
+}
+void EnrollmentRuntime::Release(uint32 guid)
+{
+    if (OnWorldThread())
+        _cache.Release(guid);
+}
+bool EnrollmentRuntime::PrepareOffline(uint32 lowGuid)
+{
+#if defined(AUTONOMY_HAS_ENROLLMENT_V1) && defined(AUTONOMY_HAS_MAINTENANCE_V1)
+    if (!OnWorldThread() || _cache.Reserved() != lowGuid || !_cache.LoginBlocked(lowGuid))
+        return false;
+    auto guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
+    auto* player = ObjectAccessor::FindConnectedPlayer(guid);
+    if (!player)
+        return !PlayerbotHolder::HasPendingBotLogin(guid);
+    auto* ai = GET_PLAYERBOT_AI(player);
+    if (!player->GetSession() || !ai || IsRealPlayer(player) || IsSelfBot(player) || ai->HasGameClientMaster() ||
+        player->GetGuildId() || player->GetGroup() || player->GetOriginalGroup() || player->IsInCombat() ||
+        player->IsBeingTeleported() || !player->IsAlive() || sRandomPlayerbotMgr.GetPlayerBot(guid) != player)
+        return false;
+    sRandomPlayerbotMgr.LogoutPlayerBot(guid);
+    return false;  // Re-resolve only on a later tick, after normal logout/save and pending-login cleanup.
+#else
+    (void)lowGuid;
+    return false;
+#endif
+}
+bool EnrollmentRuntime::HandoffLogin(uint32 lowGuid)
+{
+#if defined(AUTONOMY_HAS_ENROLLMENT_V1) && defined(AUTONOMY_HAS_MAINTENANCE_V1)
+    if (!OnWorldThread() || !_activityEnabled || !Idle() || _cache.Reserved() != lowGuid)
+        return false;
+    auto const record = _cache.Get(lowGuid);
+    if (!record.IdentityValid || record.State != EnrollmentState::Pending || !record.AccountIsRandomBot)
+        return false;
+    _cache.AllowLogin(lowGuid);
+    sRandomPlayerbotMgr.AddPlayerBot(ObjectGuid::Create<HighGuid::Player>(lowGuid), 0);
+    return true;
+#else
+    (void)lowGuid;
+    return false;
+#endif
 }
 }  // namespace PlayerbotAutonomy

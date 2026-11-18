@@ -59,12 +59,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-playerbots
-          ref: 3beeabf9735766edfa24abf9032b20e8c2bb25e2
+          ref: edbd9edbd49a387bdec6c71d97f15cce5b8df4e9
           path: _deps/maintenance
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             src/Bot/RoutineMaintenancePolicy.h
+            src/Bot/AutonomyEnrollment.h
       - name: Exercise the real controller with deterministic engine and DB boundary fakes
         env:
           CXX_STANDARD: ${{ matrix.standard }}

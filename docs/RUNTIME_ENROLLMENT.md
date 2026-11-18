@@ -38,23 +38,48 @@ installed during script registration, before world
 initialization/configured bot factories. Until the cache loads, unknown candidates
 are vetoed. Verify this ordering in the integrated server before enabling.
 
-`PlayerbotAutonomy.Enable = 0` remains the default: disabled startup opens no
-enrollment DB connection and accepts no transitions, guild hooks with effects,
-or maintenance provider. A pool opened during an enabled session is retained
-until shutdown, while disabled mode schedules no new SQL. A reload to 0
-removes the provider immediately and prevents new work. An already submitted SQL
-transaction may finish; its history is retained. **Do not disable or restart
-with Enable=0 while any Pending/Persistent character exists:** current reload
-semantics unregister the callback, restoring destructive filler maintenance.
-Safely retiring all enrolled bots or stopping the realm before maintenance is
-required before operator rollback. This remains an explicit release gate. Re-enable rebuilds readiness.
-An initial pool-open/prepare failure requires a config reload or restart to retry; failures
-on established connections/schema/page queries retry with a five-second backoff.
+`PlayerbotAutonomy.Enable = 0` stops activities and new transitions. **Protection
+stays active**, on reload and on restart. This module now always requires the M1
+schema and maintenance provider. Until the cache loads, unknown candidates are
+blocked; schema/DB failures remain blocked. Known unowned filler uses legacy
+maintenance and automatic guild placement while activities are off. Existing
+Pending/Persistent characters stay protected even after guild loss, account
+reassignment, or activity disable. A queued write may finish and its receipt and
+cache are reconciled even after activities stop. No automatic retirement occurs.
 
-Disabling intentionally restores legacy maintenance, including for enrolled bots.
-For rollback of an enabled pilot, first pause destructive random maintenance or
-stop the realm, preserve all enrollment/audit/receipt tables, then revert code.
-Dropping tables, deleting history or retiring every bot is not a rollback.
+The optional enrollment handoff requires playerbots master companion commit
+`edbd9edbd49a387bdec6c71d97f15cce5b8df4e9` on baseline
+`08b6bd127513d7273b1fcb765e537c5a3cd813ec`. It supplies cached explicit type-1
+classification, a per-GUID login veto at ingress and asynchronous materialization,
+and a pending-login observation. Missing handoff capability disables reservations;
+missing maintenance capability aborts even with activities off. No full build or
+deployment was run here. The user reports M1 deployed; that report is distinct
+from this candidate's verification.
+
+`RandomBotAccounts` is filled by factory character creation and is a broad pool;
+it can include AddClass/unassigned accounts or omit existing dedicated accounts.
+Autonomy uses `IsDedicatedRandomAccount()` from the manager's explicit type-1
+assignments, which load independently of factory creation. It never authorizes an
+account from a name prefix or calls the synchronous `IsAccountType()` on ticks.
+Diagnosis reports both broad factory membership and dedicated eligibility. The
+supplied Trela identity is covered with eligible/ineligible fixtures; live account
+assignment, online state and historical rejection remain unverified.
+
+A reservation holds one GUID for at most 120 seconds, vetoes competing bot logins
+and maintenance, waits for in-flight login cleanup, and uses normal
+`LogoutPlayerBot` save/logout before offline STAGE. No code writes
+`characters.online`. Handoff to ordinary bot login is possible only after a
+protected, durably loaded Pending record. Reservation expiry releases only
+transient exclusion, never durable protection. On shutdown map workers stop before
+the pool drains; provider lifetime continues until process exit.
+
+Rollback: stop activities with Enable=0 and retain this protection revision and
+all enrollment/audit/receipt tables. A code rollback to a revision that removes
+protection is unsafe with Pending/Persistent rows: keep worldserver stopped until
+compatible protection is restored. There is deliberately no configuration bypass
+for existing durable protection. Initial DB open failure needs reload/restart;
+established schema/page failures retry with backoff. Runtime disable cannot prove
+that removing the module or downgrading an external binary is safe.
 
 ## SQL and transactional boundary
 
@@ -130,8 +155,8 @@ the GUID, its IdentityValid/account/guild/state/revision, current
 and WorldSession presence, and the first failing STAGE eligibility check.
 An offline character reports WorldSession as `not_applicable`.
 Cache presence includes invalidated entries; it does not imply valid identity.
-The random-account list is the runtime authority here; SQL `account_type` alone
-does not establish membership in that list.
+Dedicated type-1 assignments are the runtime authority; broad factory membership
+is reported separately and is not an enrollment eligibility proof.
 
 The diagnosis and pre-commit validator share the same observations and decision
 logic. Diagnosis uses the **current cached revision**, with no request UUID,

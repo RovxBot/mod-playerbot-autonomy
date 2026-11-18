@@ -2,7 +2,7 @@
 
 A planned autonomous-world simulation module for the [AzerothCore WotLK playerbots fork](https://github.com/mod-playerbots/azerothcore-wotlk), designed to work alongside [RovxBot/mod-playerbots](https://github.com/RovxBot/mod-playerbots) and [RovxBot/mod-dungeon-clear](https://github.com/RovxBot/mod-dungeon-clear).
 
-> **Status: M1 runtime candidate, not deployed.** The branch implements a disabled-by-default character-enrollment adapter, durable lifecycle, cached maintenance provider and tests. **No full combined worldserver build, real character pilot, or live enrollment is yet proven.** Do not enable on the realm before the integration gates pass.
+> **Status: M1 safety release candidate.** The operator reports M1 deployed; this candidate has not been deployed. The branch implements a disabled-by-default character-enrollment adapter, durable lifecycle, cached maintenance provider and tests. **No full combined worldserver build, real character pilot, or live enrollment is yet proven.** Do not enable on the realm before the integration gates pass.
 
 ## Vision
 
@@ -38,7 +38,7 @@ Check out the repository at `modules/mod-playerbot-autonomy/` alongside `modules
 PlayerbotAutonomy.Enable = 0
 ```
 
-Enabling requires the two enrollment migrations and the matching playerbots v1 maintenance capability. If that capability is missing while enabled, worldserver deliberately aborts rather than allowing unprotected random-bot maintenance. With it, the provider blocks unknown candidates until the asynchronous cache has reconciled; explicit operator-enabled console/administrator-RA operations can then write enrollment and audit records, but only when PlayerbotAutonomy.AllowEnrollmentCommands=1. No guild or progression data is changed by enrollment. Full build and controlled realm validation remain required before rollout.
+Installing this safety revision requires the two enrollment migrations even with activities off and the matching playerbots v1 maintenance capability. If that capability is missing, worldserver deliberately aborts rather than allowing unprotected random-bot maintenance. Protection remains active with `Enable=0`, including after restart. With it, the provider blocks unknown candidates until the asynchronous cache has reconciled; explicit operator-enabled console/administrator-RA operations can then write enrollment and audit records, but only when PlayerbotAutonomy.AllowEnrollmentCommands=1. No guild or progression data is changed by enrollment. Full build and controlled realm validation remain required before rollout.
 
 ### Fast, standalone policy and enrollment tests
 

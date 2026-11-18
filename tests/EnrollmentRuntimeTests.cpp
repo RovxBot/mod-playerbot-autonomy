@@ -65,7 +65,7 @@ void Pump(unsigned ticks = 20)
     for (unsigned i = 0; i < ticks; ++i)
         Runtime().Update(100);
 }
-TransitionRequest Request(EnrollmentRequest action, uint64 revision, char last)
+[[maybe_unused]] TransitionRequest Request(EnrollmentRequest action, uint64 revision, char last)
 {
     TransitionRequest request{
         42, 7, FakePlayer.Guild, revision, action, "00000000-0000-0000-0000-000000000000", "authorized test"};
@@ -141,7 +141,8 @@ void TestDiagnosis()
     auto const text = FormatStageDiagnosis(stage);
     assert(text.find("autonomy_cache_found=true identity_valid=true cached_account=7 cached_guild=0 "
                      "cached_state=ABSENT cached_revision=0") != std::string::npos);
-    assert(text.find("random_account=true validation_account=7 character_cache_account=7 "
+    assert(text.find("random_account=true factory_account=true dedicated_type1_account=true validation_account=7 "
+                     "character_cache_account=7 "
                      "character_cache_guild=0 character_cache_group_guid=0") != std::string::npos);
     assert(text.find("connected_player=false world_session=not_applicable") != std::string::npos);
     assert(text.find("stage_world_checks=PASS reason=accept expected_revision=0") != std::string::npos);
@@ -277,7 +278,8 @@ void TestDiagnosis()
     auto const trelaText = FormatStageDiagnosis(stage);
     assert(trelaText.find("cached_account=19 cached_guild=1 cached_state=ABSENT cached_revision=0") !=
            std::string::npos);
-    assert(trelaText.find("random_account=false validation_account=19 character_cache_account=19 "
+    assert(trelaText.find("random_account=false factory_account=false dedicated_type1_account=false "
+                          "validation_account=19 character_cache_account=19 "
                           "character_cache_guild=1 character_cache_group_guid=0") != std::string::npos);
     assert(trelaText.find("stage_world_checks=FAIL reason=non_random_account") != std::string::npos);
     sPlayerbotAIConfig.Accounts.insert(19);
@@ -385,18 +387,11 @@ TransactionCallback EnrollmentStore::ReconcileOrphan(uint32)
 int main()
 {
 #ifndef TEST_MAINTENANCE_PRESENT
-    Runtime().Configure(false);
-    Runtime().Start("throwaway");
-    assert(!Runtime().ProtectionAvailable() && FakeDatabaseCalls == 0);
-    auto const diagnosis = Runtime().DiagnoseStage(42);
-    assert(std::string(diagnosis.Reason()) == "autonomy_disabled");
-    assert(FormatStageDiagnosis(diagnosis).find("random_account=unavailable") != std::string::npos);
-    assert(FakeDatabaseCalls == 0);
-    assert(!Runtime().Submit(Request(EnrollmentRequest::StageBeforeGuildJoin, 0, '1')));
 #if defined(__unix__)
+    AssertFailsClosed([] { Runtime().Configure(false); });
     AssertFailsClosed([] { Runtime().Configure(true); });
 #endif
-    std::cout << "Missing-maintenance capability fails closed on enable; legacy mode stays off\n";
+    std::cout << "Missing maintenance fails closed even with activities off\n";
 #else
 #if defined(__unix__)
     assert(Maintenance::RegisterProvider(&CompetingProvider));
@@ -406,8 +401,11 @@ int main()
     auto& runtime = Runtime();
     runtime.Configure(false);
     runtime.Start("throwaway");
-    assert(FakeDatabaseCalls == 0);
+    assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
+    Pump();
+    assert(runtime.Cache().Ready());
     assert(!Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
+    assert(!Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::LegacyGuildAssignment));
     assert(!runtime.Submit(Request(EnrollmentRequest::StageBeforeGuildJoin, 0, '1')));
     runtime.Configure(true);
     assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
@@ -416,8 +414,25 @@ int main()
     assert(!Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
     assert(Maintenance::ShouldBlockRoutineMaintenance(9999, Maintenance::Action::Randomize));
     assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::LegacyGuildAssignment));
-    assert(Maintenance::ShouldBlockRoutineMaintenance(0, Maintenance::Action::AccountDeletion));
+    assert(!Maintenance::ShouldBlockRoutineMaintenance(0, Maintenance::Action::AccountDeletion));
     TestDiagnosis();
+    sRandomPlayerbotMgr.ExcludedAccounts.insert(7);  // AddClass/human pool member, still in broad factory list.
+    assert(!runtime.DiagnoseStage(42).Facts.AccountIsRandomBot);
+    assert(runtime.DiagnoseStage(42).FactoryRandomAccount);
+    sRandomPlayerbotMgr.ExcludedAccounts.clear();
+#ifdef PLAYERBOTS_AUTONOMY_ENROLLMENT_H
+    FakePlayer.Online = false;
+    assert(runtime.Reserve(42));
+    assert(!runtime.Reserve(42) && runtime.LoginBlocked(42) && runtime.Cache().ShouldBlock(42));
+    FakePendingLogin = true;
+    assert(!runtime.PrepareOffline(42));
+    FakePendingLogin = false;
+    assert(runtime.PrepareOffline(42));
+    assert(!runtime.HandoffLogin(42));  // Not durably Pending.
+    runtime.Release(42);
+    assert(!runtime.LoginBlocked(42) && !runtime.Cache().ShouldBlock(42));
+    FakePlayer.Online = true;
+#endif
     auto request = Request(EnrollmentRequest::StageBeforeGuildJoin, 0, '1');
     auto const rejectedBefore = runtime.Counters().Rejected;
     std::thread foreignCaller([&] { assert(!runtime.Submit(request)); });
@@ -442,15 +457,38 @@ int main()
     // A read-only diagnosis may pass while the queue is busy. It must neither
     // replace the queued request nor issue/retry any database work.
     assert(ReadOnlyDiagnosis(request, true).Passed());
-    runtime.Update(100);  // preflight receipt, then enqueue commit
+    runtime.Update(100);       // preflight receipt, then enqueue commit
+    runtime.Configure(false);  // An issued SQL transaction may commit after activity disable.
     assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
     Pump();
     assert(durable.State == EnrollmentState::Pending && runtime.Cache().Ready());
+    assert(runtime.Cache().ShouldBlock(42));
+    runtime.Configure(true);
+    Pump();
+#ifdef PLAYERBOTS_AUTONOMY_ENROLLMENT_H
+    assert(runtime.Reserve(42));
+    assert(runtime.PrepareOffline(42));
+    assert(runtime.HandoffLogin(42));
+    assert(!runtime.LoginBlocked(42) && runtime.Cache().ShouldBlock(42) && FakeLoginCalls == 1);
+    runtime.Release(42);
+    assert(runtime.Cache().ShouldBlock(42));
+#endif
     runtime.Stop();
     runtime.Start("throwaway");
     Pump();
     assert(runtime.Cache().Get(42).State == EnrollmentState::Pending);
     assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
+    // Disable/restart with Pending retains the provider and durable guard.
+    runtime.Configure(false);
+    Pump();
+    assert(runtime.ProtectionAvailable() && runtime.Cache().ShouldBlock(42));
+    assert(!runtime.Submit(Request(EnrollmentRequest::CancelFailedGuildJoin, 1, '8')));
+    runtime.Stop();
+    runtime.Start("throwaway");
+    Pump();
+    assert(runtime.Cache().Get(42).State == EnrollmentState::Pending && runtime.Cache().ShouldBlock(42));
+    runtime.Configure(true);
+    Pump();
     FakePlayer.Guild = 11;
     FakePlayer.Online = true;
     Reload();
@@ -471,6 +509,9 @@ int main()
     Pump();
     assert(durable.State == EnrollmentState::Persistent);
     FakePlayer.Guild = 0;
+    runtime.Configure(false);
+    Pump();
+    assert(runtime.Cache().ShouldBlock(42));
     Reload();
     assert(runtime.Cache().ShouldBlock(42));
     // Replaying STAGE after CONFIRM must leave the newer cache state intact.
@@ -510,7 +551,7 @@ int main()
     assert(!runtime.Cache().Ready());
     assert(!runtime.Submit(Request(EnrollmentRequest::StageBeforeGuildJoin, 3, '4')));
     runtime.Configure(false);
-    assert(!Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
+    assert(Maintenance::ShouldBlockRoutineMaintenance(42, Maintenance::Action::Randomize));
     FakeDatabaseReady = true;
     Pump();
     Reload();
@@ -525,7 +566,7 @@ int main()
     runtime.Start("throwaway");
     assert(!runtime.Cache().Ready() && runtime.Cache().ShouldBlock(42));
     runtime.Configure(false);
-    assert(!runtime.Cache().ShouldBlock(42));
+    assert(runtime.Cache().ShouldBlock(42));
     runtime.Stop();
     openWorks = true;
     schemaWorks = false;

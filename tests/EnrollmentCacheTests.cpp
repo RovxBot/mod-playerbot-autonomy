@@ -53,6 +53,17 @@ int main()
     assert(!cache.ShouldBlock(1));  // kill switch beats cached protection/failure
     cache.SetReady(true);
     cache.SetEnabled(true);
+    cache.SetActivityEnabled(false);
+    cache.Put({12, 7, 0, 1, EnrollmentState::Pending, true, true});
+    assert(cache.ShouldBlock(12) && cache.ShouldBlockLegacyGuildAssignment(12));
+    cache.Put({12, 7, 0, 2, EnrollmentState::Retired, true, true});
+    assert(!cache.ShouldBlock(12) && !cache.ShouldBlockLegacyGuildAssignment(12));
+    assert(cache.Reserve(12) && !cache.Reserve(12));
+    assert(cache.LoginBlocked(12) && cache.ShouldBlock(12));
+    cache.AllowLogin(12);
+    assert(!cache.LoginBlocked(12) && cache.ShouldBlock(12));
+    cache.Release(12);
+    assert(!cache.ShouldBlock(12));
     for (std::uint32_t guid = 2; guid <= 10000; ++guid)
     {
         record.Guid = guid;

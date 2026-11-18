@@ -4,20 +4,14 @@
 # mod-playerbot-autonomy
 ########################################
 
-# Master switch. Defaults to off.
-# Requires both enrollment SQL migrations and the matching playerbots maintenance
-# v1 interface. If enabled without the matching protection callback, worldserver
-# terminates on purpose rather than running unprotected.
-# While enabled, an unloaded/failed cache vetoes routine destructive maintenance.
-# Explicit console enrollment only: no automatic recruitment or guild changes.
-# See docs/RUNTIME_ENROLLMENT.md for the uncompleted build/pilot release gates.
-#
-# 0 = legacy maintenance; no new enrollment work or startup DB connection.
-# 1 = opt-in cache/protection and authorized enrollment transitions. The server
-# will fail-stop if the required playerbots provider is missing or unavailable.
-# Reloading 0 stops new work and removes the maintenance provider immediately.
-# An already submitted SQL transaction may finish; its durable history is retained.
-# An existing pool is retained until shutdown; disabled mode schedules no new SQL.
+# Activity switch; OFF stops new enrollment/director work.
+# Persistence protection is mandatory while this module is installed, including
+# Enable=0, reload and restart. Both enrollment migrations and the matching
+# playerbots maintenance v1 capability are required even when activities are off.
+# Missing capability aborts; DB/cache failure blocks destructive maintenance.
+# Known unowned filler resumes legacy maintenance after startup reconciliation.
+# There is no runtime switch that exposes Pending/Persistent characters to reset.
+# Rollback must retain this protection or keep the realm stopped. Preserve SQL.
 PlayerbotAutonomy.Enable = 0
 
 # Separate operator authorization switch for the stage/confirm/cancel/retire

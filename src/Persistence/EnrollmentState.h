@@ -157,6 +157,9 @@ constexpr bool MustProtectFromDestructiveMaintenance(bool enabled, bool accountI
                                                      EnrollmentState state, bool currentlyGuilded,
                                                      bool hasExclusiveLease)
 {
+    // Durable ownership outlives activity switches and account/control changes.
+    if (state == EnrollmentState::Pending || state == EnrollmentState::Persistent)
+        return true;
     if (!enabled || !accountIsRandomBot || isSelfbot || hasHumanController)
         return false;
     return state == EnrollmentState::Unknown || state == EnrollmentState::Pending ||

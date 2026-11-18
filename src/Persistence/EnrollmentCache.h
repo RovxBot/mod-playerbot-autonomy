@@ -68,11 +68,39 @@ public:
             _records[record.Guid] = record;
     }
 
+    void SetActivityEnabled(bool enabled) { _activity.store(enabled, std::memory_order_release); }
+    bool Reserve(std::uint32_t guid)
+    {
+        std::uint32_t expected = 0;
+        if (!guid || !_reserved.compare_exchange_strong(expected, guid))
+            return false;
+        _loginBlocked.store(guid, std::memory_order_release);
+        return true;
+    }
+    std::uint32_t Reserved() const { return _reserved.load(std::memory_order_acquire); }
+    bool LoginBlocked(std::uint32_t guid) const
+    {
+        return guid && _loginBlocked.load(std::memory_order_acquire) == guid;
+    }
+    void AllowLogin(std::uint32_t guid)
+    {
+        if (Reserved() == guid)
+            _loginBlocked.store(0, std::memory_order_release);
+    }
+    void Release(std::uint32_t guid)
+    {
+        if (Reserved() == guid)
+        {
+            _loginBlocked.store(0, std::memory_order_release);
+            _reserved.store(0, std::memory_order_release);
+        }
+    }
+
     bool ShouldBlock(std::uint32_t guid) const
     {
         if (!Enabled())
             return false;
-        if (!Ready())
+        if (Reserved() == guid || !Ready())
             return true;
         auto const record = Get(guid);
         if (!record.IdentityValid || record.State == EnrollmentState::Unknown ||
@@ -81,19 +109,41 @@ public:
         return record.AccountIsRandomBot && record.Guild;
     }
 
+    // Bulk deletion is rare and world-thread-only. Never put this scan on bot ticks.
+    bool MayContainProtected() const
+    {
+        if (!Ready() || Reserved())
+            return true;
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        for (auto const& item : _records)
+        {
+            auto const& r = item.second;
+            if (!r.IdentityValid || r.State == EnrollmentState::Pending || r.State == EnrollmentState::Persistent ||
+                (r.AccountIsRandomBot && r.Guild))
+                return true;
+        }
+        return false;
+    }
+
     bool ShouldBlockLegacyGuildAssignment(std::uint32_t guid) const
     {
         if (!Enabled())
             return false;
-        if (!guid || !Ready())
+        if (!guid)
+            return _activity.load(std::memory_order_acquire) || MayContainProtected();
+        if (!Ready())
             return true;
         auto const record = Get(guid);
-        return !record.IdentityValid || record.AccountIsRandomBot || record.State == EnrollmentState::Pending ||
-               record.State == EnrollmentState::Persistent;
+        return Reserved() == guid || !record.IdentityValid ||
+               (_activity.load(std::memory_order_acquire) && record.AccountIsRandomBot) ||
+               record.State == EnrollmentState::Pending || record.State == EnrollmentState::Persistent;
     }
 
 private:
     std::atomic<bool> _enabled{false};
+    std::atomic<bool> _activity{false};
+    std::atomic<std::uint32_t> _reserved{0};
+    std::atomic<std::uint32_t> _loginBlocked{0};
     std::atomic<bool> _ready{false};
     mutable std::shared_mutex _mutex;
     std::unordered_map<std::uint32_t, EnrollmentRecord> _records;

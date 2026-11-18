@@ -130,10 +130,10 @@ private:
         {
             auto const& counts = runtime.Counters();
             handler->PSendSysMessage(
-                "Autonomy enabled={} maintenance_v1={} ready={} pages={} rows={} "
+                "Autonomy activities={} protection={} maintenance_v1={} ready={} pages={} rows={} "
                 "pending_observations={} orphan_observations={} commits={} "
                 "replays={} rejected={} failures={}",
-                runtime.Cache().Enabled(), runtime.ProtectionAvailable(), runtime.Cache().Ready(), counts.Pages,
+                runtime.ActivityEnabled(), runtime.Cache().Enabled(), runtime.ProtectionAvailable(), runtime.Cache().Ready(), counts.Pages,
                 counts.Rows, counts.Pending, counts.Orphans, counts.Committed, counts.Replayed, counts.Rejected,
                 counts.Failures);
             return true;

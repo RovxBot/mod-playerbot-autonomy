@@ -145,6 +145,12 @@ struct Player
     bool Human = false;
     bool HasSession = true;
     bool HasAI = true;
+    bool Combat = false;
+    bool Teleporting = false;
+    bool Alive = true;
+    bool IsInCombat() const { return Combat; }
+    bool IsBeingTeleported() const { return Teleporting; }
+    bool IsAlive() const { return Alive; }
     WorldSession Session;
     PlayerbotAI AI;
     ObjectGuid GetGUID() const { return {Guid}; }
@@ -181,6 +187,29 @@ struct PlayerbotAIConfig
     bool IsInRandomAccountList(uint32 account) const { return Accounts.count(account); }
 };
 inline PlayerbotAIConfig sPlayerbotAIConfig;
+inline bool FakePendingLogin = false;
+inline unsigned FakeLogoutCalls = 0;
+inline unsigned FakeLoginCalls = 0;
+struct PlayerbotHolder
+{
+    static bool HasPendingBotLogin(ObjectGuid) { return FakePendingLogin; }
+};
+struct RandomPlayerbotMgr : PlayerbotHolder
+{
+    std::unordered_set<uint32> ExcludedAccounts;
+    bool IsDedicatedRandomAccount(uint32 id) const
+    {
+        return sPlayerbotAIConfig.Accounts.count(id) && !ExcludedAccounts.count(id);
+    }
+    Player* GetPlayerBot(ObjectGuid guid) { return ObjectAccessor::FindConnectedPlayer(guid); }
+    void LogoutPlayerBot(ObjectGuid)
+    {
+        ++FakeLogoutCalls;
+        FakePlayer.Online = false;
+    }
+    void AddPlayerBot(ObjectGuid, uint32) { ++FakeLoginCalls; }
+};
+inline RandomPlayerbotMgr sRandomPlayerbotMgr;
 inline std::string FakeLastError;
 template <typename... Args>
 std::string FakeFormat(std::string format, Args const&... args)
