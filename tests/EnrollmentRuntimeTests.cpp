@@ -114,9 +114,6 @@ void Rejected(TransitionRequest const& request, char const* reason, bool stageCo
     {
         auto const stage = ReadOnlyDiagnosis(request, true);
         assert(!stage.Passed() && std::string(stage.Reason()) == reason);
-        FakeClientAccountSession = true;
-        Rejected(request, "human_or_selfbot_control");
-        FakeClientAccountSession = false;
         auto const text = FormatStageDiagnosis(stage);
         assert(text.find(std::string("stage_world_checks=FAIL reason=") + reason) != std::string::npos);
     }
@@ -140,6 +137,9 @@ void TestDiagnosis()
     auto stage = ReadOnlyDiagnosis(request, true);
     assert(stage.Passed() && ReadOnlyDiagnosis(request).Passed());
     assert(stage.CacheFound && stage.Cached.IdentityValid && stage.CharacterAccount == 7);
+    FakeClientAccountSession = true;
+    Rejected(request, "human_or_selfbot_control");
+    FakeClientAccountSession = false;
     assert(!stage.ConnectedPlayer && !stage.SessionPresent && stage.CharacterGroupGuid == 0);
     auto const text = FormatStageDiagnosis(stage);
     assert(text.find("autonomy_cache_found=true identity_valid=true cached_account=7 cached_guild=0 "
