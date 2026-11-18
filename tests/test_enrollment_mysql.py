@@ -1,7 +1,9 @@
-"""Runs production prepared SQL against a disposable MySQL 8 database only.
+"""Runs production SQL text against a disposable MySQL 8 database only.
 
 AUTONOMY_MYSQL_SOCKET and AUTONOMY_MYSQL_DATABASE must point at a throwaway DB.
 No server is contacted by normal unittest discovery without that opt-in.
+PyMySQL uses the text protocol here; tools/check_prepared_mysql.py separately
+exercises binary prepared statements, production Store bindings and core Fields.
 """
 
 from __future__ import annotations
@@ -88,7 +90,8 @@ class EnrollmentMySQLTests(unittest.TestCase):
 
     @staticmethod
     def execute(cur, name, args=()):
-        # PyMySQL binds values; '?' is the same parameter layout used by core MySQLPreparedStatement.
+        # PyMySQL escapes/substitutes values into text queries. This checks SQL
+        # semantics, not binary Field decoding or the production Store bindings.
         return cur.execute(SQL[name].replace("?", "%s"), args)
 
     def transition(

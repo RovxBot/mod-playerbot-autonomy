@@ -140,7 +140,7 @@ void GuildRuntime::Load()
                 m.Slot = f[0].Get<uint32>();
                 m.Founder = f[1].Get<uint32>();
                 m.Account = f[2].Get<uint32>();
-                m.Faction = f[3].Get<uint32>();
+                m.Faction = f[3].Get<uint8>();
                 m.Guild = f[4].Get<uint32>();
                 auto phase = f[5].Get<std::string>();
                 m.Phase = GuildPhase::Quarantined;
@@ -151,7 +151,7 @@ void GuildRuntime::Load()
                 m.Reason = f[7].Get<std::string>();
                 m.StageRevision = f[8].Get<uint64>();
                 m.StageRequest = f[9].Get<std::string>();
-                m.StageVerified = f[10].Get<uint32>() != 0;
+                m.StageVerified = f[10].Get<uint64>() != 0;
                 if (!m.Slot || m.Slot > 64 || !m.Founder || !m.Account || m.Faction > 1)
                 {
                     _loaded = false;
@@ -503,7 +503,7 @@ void GuildRuntime::LoadRecruitmentPage()
                                    m.StageRevision = f[5].Get<uint64>();
                                    m.StageRequest = f[6].Get<std::string>();
                                    m.Reason = f[8].Get<std::string>();
-                                   m.StageVerified = f[9].Get<uint32>() != 0;
+                                   m.StageVerified = f[9].Get<uint64>() != 0;
                                    auto phase = f[7].Get<std::string>();
                                    m.Phase = RecruitmentPhase::Quarantined;
                                    for (auto value : {RecruitmentPhase::Selected, RecruitmentPhase::Joining,

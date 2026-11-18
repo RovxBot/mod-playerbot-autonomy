@@ -58,6 +58,10 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 CI tests pure C++17/C++20 decisions, fake engine/DB boundaries, pinned maintenance-provider integration and the actual prepared SQL on disposable MySQL 8.x. None of these proves combined worldserver linkage, live startup, or an in-game persistence pilot.
 
+[Prepared SQL regression evidence](docs/PREPARED_SQL_REGRESSIONS.md) explains the
+enrollment revision decoder and guild binding fixes, and how to run the binary
+prepared-statement harness with the production stores and pinned core decoder.
+
 ## Build validation and follow-up
 
 The [15 November 2026 homelab WotLK build](https://github.com/RovxBot/homelab-infra/actions/runs/43679235448) compiled both autonomy source files and successfully linked/published the worldserver image. The build is verified, and a subsequent read-only Kubernetes check confirmed the **new image running Ready with zero restarts**. The module's INFO-level startup message is filtered by the production logging configuration, so execution of that specific hook has not been directly observed.

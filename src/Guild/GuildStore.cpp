@@ -58,10 +58,8 @@ TransactionCallback GuildStore::Save(GuildIntent const& m, std::optional<GuildPh
         stmt->SetData(1, m.Guild);
         stmt->SetData(2, m.Reason);
         stmt->SetData(3, m.Slot);
-        stmt->SetData(4, m.StageRevision);
-        stmt->SetData(5, m.StageRequest);
-        stmt->SetData(6, m.Founder);
-        stmt->SetData(7, m.Account);
+        stmt->SetData(4, m.Founder);
+        stmt->SetData(5, m.Account);
         stmt->SetData(6, std::string_view(PhaseName(*before)));
         stmt->SetData(7, std::string_view(PhaseName(m.Phase)));
         stmt->SetData(8, m.Guild);

@@ -1,4 +1,8 @@
-"""Disposable MySQL checks execute the exact production guild statements."""
+"""Disposable MySQL text-query checks of production guild SQL semantics.
+
+The hand-written tuples here do not test GuildStore::Save parameter binding;
+tools/check_prepared_mysql.py executes that production method with binary SQL.
+"""
 import re
 from pathlib import Path
 import test_enrollment_mysql as enrollment

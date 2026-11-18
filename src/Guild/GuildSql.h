@@ -12,7 +12,7 @@ SELECT m.*, EXISTS (
  AND a.reason=CONCAT('director founding slot ',m.slot)
  AND r.expected_revision=m.stage_revision AND r.resulting_revision=m.stage_revision+1
 ) stage_verified FROM (SELECT 1) s LEFT JOIN
- (SELECT slot, founder_guid, account_id, faction, COALESCE(guild_id,0), phase, name, reason, stage_revision, stage_request
+ (SELECT slot, founder_guid, account_id, faction, guild_id, phase, name, reason, stage_revision, stage_request
   FROM playerbot_autonomy_guild ORDER BY slot LIMIT 64) m ON TRUE
 WHERE EXISTS (SELECT 1 FROM information_schema.table_constraints
  WHERE table_schema=DATABASE() AND table_name='playerbot_autonomy_guild_audit'

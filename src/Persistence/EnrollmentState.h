@@ -1,6 +1,8 @@
 #ifndef PLAYERBOT_AUTONOMY_ENROLLMENT_STATE_H
 #define PLAYERBOT_AUTONOMY_ENROLLMENT_STATE_H
 
+#include <cstdint>
+
 namespace PlayerbotAutonomy
 {
 // Durable enrollment is distinct from current guild membership and from the
@@ -24,6 +26,16 @@ enum class EnrollmentRequest
     CancelFailedGuildJoin,
     ExplicitRetirement
 };
+
+// Absent has no durable row; every stored lifecycle starts at revision one.
+// Unknown or inconsistent SQL snapshots must never authorize maintenance/work.
+constexpr bool ValidEnrollmentRevision(EnrollmentState state, std::uint64_t revision)
+{
+    if (state == EnrollmentState::Absent)
+        return revision == 0;
+    return (state == EnrollmentState::Pending || state == EnrollmentState::Persistent ||
+            state == EnrollmentState::Retired) && revision > 0;
+}
 
 enum class EnrollmentDecision
 {

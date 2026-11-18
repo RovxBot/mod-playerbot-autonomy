@@ -117,11 +117,48 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 -m pip install PyMySQL==1.1.2
+      - name: Checkout pinned core binary result decoder (no worldserver build)
+        uses: actions/checkout@v4
+        with:
+          repository: mod-playerbots/azerothcore-wotlk
+          ref: 0554bcdd664ff6d85291ca2a10fd31d3e37e89e6
+          path: _deps/core
+          persist-credentials: false
+          sparse-checkout: |
+            src/common
+            src/server/database
+            deps/fmt
+            deps/SFMT
+      - name: Checkout pinned maintenance interface
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-playerbots
+          ref: 422db5a50b429db01ab481ba597b928c87b0eb98
+          path: _deps/playerbots
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/Bot/RoutineMaintenancePolicy.h
+            src/Bot/AutonomyEnrollment.h
+      - name: Install isolated decoder test dependencies
+        run: |
+          sudo apt-get update
+          # Hosted runners already include MySQL client development files.
+          # Do not upgrade their local mysql-server alongside our service DB.
+          if ! command -v mysql_config >/dev/null; then
+            sudo apt-get install -y --no-install-recommends libmysqlclient-dev
+          fi
+          sudo apt-get install -y --no-install-recommends libboost-dev
       - name: Execute production SQL against disposable fixtures
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
           AUTONOMY_MYSQL_DATABASE: autonomy_test
         run: python3 -m unittest discover -s tests -p 'test_*mysql.py' -v
+      - name: Exercise binary prepared stores and core decoder
+        env:
+          AUTONOMY_MYSQL_HOST: 127.0.0.1
+          AUTONOMY_MYSQL_DATABASE: autonomy_test
+        run: python3 tools/check_prepared_mysql.py --core _deps/core --playerbots _deps/playerbots
 
   integration-contracts:
     runs-on: ubuntu-latest
