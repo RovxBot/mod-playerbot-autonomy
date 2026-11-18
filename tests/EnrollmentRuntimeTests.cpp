@@ -114,6 +114,9 @@ void Rejected(TransitionRequest const& request, char const* reason, bool stageCo
     {
         auto const stage = ReadOnlyDiagnosis(request, true);
         assert(!stage.Passed() && std::string(stage.Reason()) == reason);
+        FakeClientAccountSession = true;
+        Rejected(request, "human_or_selfbot_control");
+        FakeClientAccountSession = false;
         auto const text = FormatStageDiagnosis(stage);
         assert(text.find(std::string("stage_world_checks=FAIL reason=") + reason) != std::string::npos);
     }

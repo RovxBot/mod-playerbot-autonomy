@@ -10,6 +10,7 @@
 #include "Player.h"
 #include "QueryResult.h"
 #include "WorldSession.h"
+#include "WorldSessionMgr.h"
 
 #if __has_include("RoutineMaintenancePolicy.h")
 #include "PlayerbotAI.h"
@@ -453,11 +454,13 @@ EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest
     diagnosis.FactoryRandomAccount = sPlayerbotAIConfig.IsInRandomAccountList(diagnosis.Account);
     diagnosis.RandomAccountChecked = true;
     diagnosis.Facts.AccountIsRandomBot = sRandomPlayerbotMgr.IsDedicatedRandomAccount(diagnosis.Account);
+    diagnosis.Facts.IsHumanControlled = sWorldSessionMgr->FindSession(diagnosis.Account) != nullptr;
     if (readPlayerFacts)
     {
         auto* ai = GET_PLAYERBOT_AI(player);
         diagnosis.Facts.IsSelfbot = IsSelfBot(player);
-        diagnosis.Facts.IsHumanControlled = !ai || IsRealPlayer(player) || ai->HasGameClientMaster();
+        diagnosis.Facts.IsHumanControlled =
+            diagnosis.Facts.IsHumanControlled || !ai || IsRealPlayer(player) || ai->HasGameClientMaster();
     }
 #else
     diagnosis.Facts.IsHumanControlled = true;
@@ -670,7 +673,8 @@ bool EnrollmentRuntime::HandoffLogin(uint32 lowGuid)
     if (!OnWorldThread() || !_activityEnabled || !Idle() || _cache.Reserved() != lowGuid)
         return false;
     auto const record = _cache.Get(lowGuid);
-    if (!record.IdentityValid || record.State != EnrollmentState::Pending || !record.AccountIsRandomBot)
+    if (!record.IdentityValid || record.State != EnrollmentState::Pending || !record.AccountIsRandomBot ||
+        sWorldSessionMgr->FindSession(record.Account))
         return false;
     _cache.AllowLogin(lowGuid);
     sRandomPlayerbotMgr.AddPlayerBot(ObjectGuid::Create<HighGuid::Player>(lowGuid), 0);

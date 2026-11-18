@@ -58,6 +58,7 @@ from this candidate's verification.
 
 `RandomBotAccounts` is filled by factory character creation and is a broad pool;
 it can include AddClass/unassigned accounts or omit existing dedicated accounts.
+An active client account session excludes even an offline sibling character.
 Autonomy uses `IsDedicatedRandomAccount()` from the manager's explicit type-1
 assignments, which load independently of factory creation. It never authorizes an
 account from a name prefix or calls the synchronous `IsAccountType()` on ticks.

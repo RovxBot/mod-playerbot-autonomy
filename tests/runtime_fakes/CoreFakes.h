@@ -160,6 +160,16 @@ struct Player
     bool GetOriginalGroup() const { return OriginalGrouped; }
 };
 inline Player FakePlayer;
+inline bool FakeClientAccountSession = false;
+struct WorldSessionMgr
+{
+    WorldSession* FindSession(uint32 account)
+    {
+        return FakeClientAccountSession && account == FakePlayer.Session.Account ? &FakePlayer.Session : nullptr;
+    }
+};
+inline WorldSessionMgr FakeSessionMgr;
+#define sWorldSessionMgr (&FakeSessionMgr)
 namespace ObjectAccessor
 {
 inline Player* FindConnectedPlayer(ObjectGuid guid)
