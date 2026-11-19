@@ -4,6 +4,11 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 required = [
+    "src/Guild/GuildNamePool.h",
+    "src/Guild/GuildNameValidation.cpp",
+    "tests/GuildNameTests.cpp",
+    "tools/check_guild_names.py",
+    "docs/GUILD_NAMES.md",
     "data/sql/db-characters/2026_11_19_00_playerbot_autonomy_guild_journal.sql",
     "data/sql/db-characters/2026_11_18_00_playerbot_autonomy_guild.sql",
     "src/GuildModule.cpp",

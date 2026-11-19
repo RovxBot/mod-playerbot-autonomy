@@ -2,12 +2,15 @@
 
 A planned autonomous-world simulation module for the [AzerothCore WotLK playerbots fork](https://github.com/mod-playerbots/azerothcore-wotlk), designed to work alongside [RovxBot/mod-playerbots](https://github.com/RovxBot/mod-playerbots) and [RovxBot/mod-dungeon-clear](https://github.com/RovxBot/mod-dungeon-clear).
 
-> **Status: M1 safety release candidate.** The operator reports M1 deployed; this candidate has not been deployed. The branch implements a disabled-by-default character-enrollment adapter, durable lifecycle, cached maintenance provider and tests. **No full combined worldserver build, real character pilot, or live enrollment is yet proven.** Do not enable on the realm before the integration gates pass.
+> **Status:** the operator reports M1 persistence, four managed guilds, founding/recruitment, interrupted-founding recovery and restart persistence accepted live. New changes in this branch remain review candidates; their standalone/SQL/header checks do not establish a combined worldserver build or live acceptance.
 
 [Founding race fixes and explicit recovery](docs/GUILD_FOUNDING_RECOVERY.md),
 [managed guild founding](docs/MANAGED_GUILDS.md), [automatic recruitment](docs/RECRUITMENT.md)
 and the [manual release checklist](docs/RELEASE_CANDIDATE.md) document the
 default-off director and its separate release gates.
+
+[Curated guild naming](docs/GUILD_NAMES.md) documents the exact 46-name pool,
+core validation/rejections and immutable names for existing founding intents.
 
 ## Vision
 

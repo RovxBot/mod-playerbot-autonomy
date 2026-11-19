@@ -16,6 +16,15 @@ struct Port : GuildPort
     std::thread::id Owner = std::this_thread::get_id();
     bool OnWorldThread() const override { return std::this_thread::get_id() == Owner; }
     bool Ready() const override { return Loaded && !Queued; }
+    GuildNameChoice ChooseName() const override
+    {
+        return SelectGuildName(GuildNamePool,[this](std::string const& name)
+        {
+            for (auto const& item : Ledger)
+                if (item.second.Name == name) return std::string("persisted_founding_intent");
+            return std::string{};
+        });
+    }
     std::map<uint32_t, GuildIntent> const& Intents() const override { return Ledger; }
     bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) override
     {

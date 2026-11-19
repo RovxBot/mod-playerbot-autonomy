@@ -203,8 +203,12 @@ void GuildDirector::Update(std::uint32_t diff)
         return;
     }
     auto faction = NextFoundingFaction(_settings, _port.Intents());
-    static char const* names[] = {"Ashen Vanguard", "Amber Covenant", "Silver Horizon",  "Dawn Wardens",
-                                  "Iron Accord",    "Crimson Watch",  "Silent Standard", "Twilight Assembly"};
+    auto name = _port.ChooseName();
+    if (name.Name.empty())
+    {
+        Reject("guild_name_pool_exhausted");
+        return;
+    }
     for (std::uint32_t n = 0; n < _settings.CandidateBudget; ++n)
     {
         auto guid = _port.NextCandidate(_cursor);
@@ -233,13 +237,10 @@ void GuildDirector::Update(std::uint32_t diff)
                            faction,
                            0,
                            GuildPhase::Planned,
-                           names[(slot - 1) % 8],
+                           name.Name,
                            "director founding intent"};
         intent.StageRevision = candidate.Enrollment.Revision;
         intent.StageRequest = GuildRequestId(guid, slot, 0x1001, intent.StageRevision);
-        // More than eight slots use distinct valid alphabetic suffixes.
-        if (slot > 8)
-            intent.Name += std::string(" ") + char('A' + (slot - 1) / 8);
         if (_port.Persist(intent, std::nullopt))
             _cooldown = _settings.CooldownMs;
         return;

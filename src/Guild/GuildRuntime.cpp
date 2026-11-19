@@ -18,6 +18,7 @@
 #include "RandomPlayerbotMgr.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
+#include "Util.h"
 namespace PlayerbotAutonomy
 {
 GuildRuntime& Guilds()
@@ -193,6 +194,12 @@ bool GuildRuntime::Persist(GuildIntent const& next, std::optional<GuildPhase> be
 {
     if (!Ready() || _director.Settings().DryRun || !_director.Settings().Enabled)
         return false;
+    if (!before)
+    {
+        auto choice = ChooseName();
+        if (choice.Name.empty() || choice.Name != next.Name)
+            return false;
+    }
     if (next.Phase == GuildPhase::Managed && (before != GuildPhase::Creating || !_createdGuilds.count(next.Slot) ||
                                               _createdGuilds.at(next.Slot) != next.Guild))
         return false;  // Interrupted founding uses the explicit recovery capability.
@@ -593,6 +600,31 @@ std::string GuildRuntime::Audit(uint32 id) const
             return out.str();
         }
     return out.str() + " managed=false reason=no_explicit_ownership_record; never_adopted";
+}
+GuildNameChoice GuildRuntime::ChooseName() const
+{
+    if (!OnWorldThread() || !_loaded)
+        return {{}, {{"", "ownership_snapshot_unloaded_or_wrong_thread"}}};
+    return SelectGuildName(GuildNamePool, [this](std::string const& name)
+    {
+        auto reason = CoreGuildNameRejection(name);
+        if (!reason.empty()) return reason;
+        if (sGuildMgr->GetGuildByName(name)) return std::string("existing_core_guild");
+        for (auto const& item : _intents)
+            if (StringEqualI(item.second.Name, name)) return std::string("persisted_founding_intent");
+        return std::string{};
+    });
+}
+std::string GuildRuntime::Names() const
+{
+    auto choice = ChooseName();
+    std::ostringstream out;
+    out << "guild_name_pool candidates=" << GuildNamePool.size() << " selected="
+        << (choice.Name.empty() ? "none" : choice.Name)
+        << " reason=" << (choice.Name.empty() ? "guild_name_pool_exhausted_or_unavailable" : "available");
+    for (auto const& rejected : choice.Rejected)
+        out << " [name=" << rejected.first << " reason=" << rejected.second << ']';
+    return out.str()+"; persisted intents keep their existing names; nothing_queued";
 }
 std::string GuildRuntime::Plan(uint32 guid, uint32 slot) const
 {

@@ -13,6 +13,10 @@
 #include "Persistence/EnrollmentSql.h"
 
 using namespace PlayerbotAutonomy;
+// Core name validation is exercised with actual extracted pinned functions by
+// check_guild_names.py. This engine/SQL harness retains its existing core fake.
+std::string PlayerbotAutonomy::CoreGuildNameRejection(std::string const& name)
+{ return ObjectMgr::IsValidCharterName(name) ? "" : "fake_core_rejection"; }
 
 // Field.cpp's case-insensitive alias helper; no gameplay/common library link.
 bool StringEqualI(std::string_view a, std::string_view b)
@@ -644,6 +648,38 @@ void TestRecovery(GuildStore& store, EnrollmentStore& enrollment)
     std::cout << "PASS actual restart/quarantine; explicit recovery/command gates, exact identity and STAGE proof; "
                  "atomic rollback, idempotency, normal CONFIRM 1->2; successful guild 24 unchanged\n";
 }
+void TestNameStore(GuildStore& store)
+{
+    store.Raw("DELETE FROM playerbot_autonomy_guild_audit");
+    store.Raw("DELETE FROM playerbot_autonomy_guild");
+    unsigned saved = 0;
+    for (uint32 i = 0; i < GuildNamePool.size(); ++i)
+    {
+        // These two are rejected by the actual core fixture, not transliterated.
+        if (i == 5 || i == 38) continue;
+        GuildIntent intent{i+1,100+i,7,0,0,GuildPhase::Planned,GuildNamePool[i],"name SQL fixture"};
+        intent.StageRequest = GuildRequestId(intent.Founder,intent.Slot,0x1001,0);
+        assert(Await(store.Save(intent,std::nullopt)));
+        ++saved;
+    }
+    GuildStore restarted;
+    assert(restarted.Initialize("disposable"));
+    auto rows = Await(restarted.Load());
+    unsigned loaded = 0;
+    do
+    {
+        auto* f = rows->Fetch();
+        assert(f[6].Get<std::string>() == GuildNamePool[f[0].Get<uint32>()-1]);
+        ++loaded;
+    } while (rows->NextRow());
+    assert(loaded == saved && saved == 44);
+    GuildIntent duplicate{50,250,7,0,0,GuildPhase::Planned,"numen","case collision"};
+    duplicate.StageRequest = GuildRequestId(250,50,0x1001,0);
+    assert(!Await(restarted.Save(duplicate,std::nullopt)));
+    assert(Scalar(store,"SELECT COUNT(*) FROM playerbot_autonomy_guild") == 44);
+    assert(Scalar(store,"SELECT COUNT(*) FROM playerbot_autonomy_guild_audit") == 44);
+    std::cout << "PASS 44 core-fixture-valid names binary store roundtrip/restart, Unicode unchanged, case collision rollback\n";
+}
 int main()
 {
     std::cout << std::unitbuf;
@@ -655,6 +691,7 @@ int main()
     TestDelayedCreate(guilds, enrollment);
     TestRecovery(guilds, enrollment);
     TestLoginChurn(enrollment);
+    TestNameStore(guilds);
     assert(Scalar(enrollment, "SELECT COUNT(*) FROM characters WHERE level<>41 OR money<>12345") == 0);
     std::cout << "PASS character progression unchanged; no worldserver build/link/startup\n";
 }

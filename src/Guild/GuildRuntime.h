@@ -31,6 +31,8 @@ public:
     GuildDirector const& Director() const { return _director; }
     bool OnWorldThread() const override { return std::this_thread::get_id() == _owner; }
     bool Ready() const override;
+    GuildNameChoice ChooseName() const override;
+    std::string Names() const;
     std::map<uint32, GuildIntent> const& Intents() const override { return _intents; }
     bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) override;
     uint32 NextCandidate(uint32 cursor) const override { return Runtime().Cache().NextGuid(cursor); }

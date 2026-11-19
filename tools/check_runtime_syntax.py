@@ -47,6 +47,7 @@ def main() -> int:
                 "src/AutonomyModule.cpp",
                 "src/GuildModule.cpp",
                 "src/Guild/GuildDirector.cpp",
+                "src/Guild/GuildNameValidation.cpp",
                 "src/Guild/RecruitmentDirector.cpp",
                 "src/Guild/GuildStore.cpp",
                 "src/Guild/GuildRuntime.cpp",
