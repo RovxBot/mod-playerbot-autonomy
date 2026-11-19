@@ -8,7 +8,7 @@ infrastructure edit was performed. Issue #9 stays open.
 ## Source set and merge order
 
 1. Merge the owner [dungeon-clear companion](https://github.com/RovxBot/mod-dungeon-clear/pull/10):
-   **`c074510f8c928f99694a161f5d5705b732ca7d29`**, based on owner master
+   **`f9201249e287027f0d393da17eb85ef588c49847`**, based on owner master
    `7f1600bacfc282a8b9407a4089407747bdce1480`.
 2. Merge this autonomy consumer, based on merged main
    **`f2f27cbc1b4a79d076ae261973bdf6a0db043aaf`**. The consumer PR records its
@@ -135,6 +135,14 @@ DC run/map/instance/reason, cleanup decision, query/write counts and scheduler
 microseconds. They never enqueue/change state. No new mutating command exists.
 
 ## Tests actually executed
+
+The provider pin was advanced during review to restore the missing Nightbane
+intro hook (66), which caused the Karazhan event-shape and custom-hook registry
+regressions. The single-file correction passed GNU C++20 real-header syntax,
+C++17/C++20 checks of the actual hook body/registration with engine fakes, and
+the bridge/authorization and lint checks. The initial SQL/controller evidence
+below predates this correction; bridge sources are unchanged. Refreshed CI
+uses the corrected provider pin; the full gtest rerun is recorded on the PR.
 
 - Existing population, enrollment, cache, transition, founding, naming,
   recruitment and operation suites under C++17/C++20; new real-executor and

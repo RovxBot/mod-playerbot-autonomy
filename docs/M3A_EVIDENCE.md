@@ -7,7 +7,7 @@ deployment, live SQL, character changes or infrastructure edits are authorised.
 
 - Autonomy merged main: `f2f27cbc1b4a79d076ae261973bdf6a0db043aaf`.
 - Dungeon-clear owner master base: `7f1600bacfc282a8b9407a4089407747bdce1480`;
-  provider `c074510f8c928f99694a161f5d5705b732ca7d29`.
+  provider `f9201249e287027f0d393da17eb85ef588c49847`.
 - Playerbots owner master: `696a009ceeeb400cfe40eedcd8a6c9333bdc1b59`.
 - Core test-staging validation snapshot: `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6`.
 
