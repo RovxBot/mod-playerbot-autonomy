@@ -14,6 +14,9 @@ enum OperationStatement : uint32
     OpRelease,
     OpLoad,
     OpRecoverPage,
+    OpExecution,
+    OpGroupSnapshot,
+    OpGroupAbsent,
     OpCount
 };
 class OperationConnection final : public MySQLConnection
@@ -33,6 +36,8 @@ public:
     bool Initialize(std::string const& info);
     QueryCallback Load(uint64 id);
     QueryCallback RecoverPage(uint64 cursor);
+    QueryCallback GroupSnapshot(Operation const& operation);
+    QueryCallback GroupAbsent(Operation const& operation);
     TransactionCallback Save(Operation const& next, Operation const* before);
     static bool Decode(PreparedQueryResult result, Operation& out, uint64& leases);
 

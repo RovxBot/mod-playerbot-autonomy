@@ -61,13 +61,18 @@ bool CanTransition(OperationState from, OperationState to)
 }
 bool OperationSettings::Valid() const
 {
-    return !AssembleGroups && Rules.Valid() && MaxConcurrent >= 1 && MaxConcurrent <= 4 && IntervalMs >= 1000 &&
+    return Rules.Valid() && MaxConcurrent >= 1 && MaxConcurrent <= 4 && IntervalMs >= 1000 &&
            IntervalMs <= 60000 && RefreshBudget >= 1 && RefreshBudget <= 16 && TimeoutSeconds >= 30 &&
-           TimeoutSeconds <= 600 && LeaseSeconds > TimeoutSeconds && LeaseSeconds <= 900;
+           TimeoutSeconds <= 600 && LeaseSeconds > TimeoutSeconds && LeaseSeconds <= 900 &&
+           MaxReal == 1 && AssemblySeconds >= 30 && AssemblySeconds <= 300 && ProgressSeconds >= 30 &&
+           ProgressSeconds <= 1800 && RunSeconds >= ProgressSeconds && RunSeconds <= 7200 &&
+           CooldownSeconds >= 30 && CooldownSeconds <= 3600 && (!AssembleGroups || !Rules.CrossGuild);
 }
 Operation NextOperation(Operation const& current, std::uint64_t now, bool enabled, bool valid)
 {
     Operation next = current;
+    if (current.Execution != ExecutionMode::Simulated)
+        return next;
     if (Terminal(current.State))
         return next;
     if (current.State == OperationState::Recovering)
@@ -136,7 +141,8 @@ bool SameOperation(Operation const& a, Operation const& b)
     if (a.Id != b.Id || a.Revision != b.Revision || a.State != b.State || a.Guild != b.Guild || a.Leader != b.Leader ||
         a.Faction != b.Faction || a.Type != b.Type || a.CreatedAt != b.CreatedAt || a.ChangedAt != b.ChangedAt ||
         a.Deadline != b.Deadline || a.LeaseUntil != b.LeaseUntil || a.Reason != b.Reason || a.Attempts != b.Attempts ||
-        a.Members.size() != b.Members.size())
+        a.Members.size() != b.Members.size() || a.Execution != b.Execution || a.Group != b.Group ||
+        a.CreationFenced != b.CreationFenced || a.Succeeded != b.Succeeded || a.GroupConfirmed != b.GroupConfirmed)
         return false;
     for (std::size_t i = 0; i < a.Members.size(); ++i)
     {

@@ -23,6 +23,7 @@ class OperationMySQLTests(unittest.TestCase):
         with self.connection.cursor() as cur:
             for table in ('operation_journal', 'operation_lease', 'operation_member', 'operation'):
                 cur.execute('DELETE FROM playerbot_autonomy_' + table)
+            cur.execute('DELETE FROM playerbot_autonomy_execution WHERE operation_id<>0')
             cur.execute('CREATE TABLE IF NOT EXISTS guild (guildid INT UNSIGNED PRIMARY KEY, '
                         'leaderguid INT UNSIGNED, name VARCHAR(24)) ENGINE=InnoDB')
             cur.execute('DELETE FROM guild')
@@ -48,6 +49,7 @@ class OperationMySQLTests(unittest.TestCase):
             with conn.cursor() as cur:
                 self.op_execute(cur, 'Insert', (op,0,23,1,0,0,'PROPOSED',100,100,190,220,0,'simulation'))
                 self.op_execute(cur, 'Journal', (op,0,'PROPOSED','simulation'))
+                self.op_execute(cur, 'Execution', (op,0,0,0,0,0,0))
                 for pos,guid in enumerate(guids):
                     self.op_execute(cur, 'Member', (op,pos,guid,100,23,1 if pos==0 else 2 if pos==1 else 3))
             conn.commit()
@@ -62,6 +64,7 @@ class OperationMySQLTests(unittest.TestCase):
             with conn.cursor() as cur:
                 self.op_execute(cur,'Change',(rev+1,after,101,rev+1,'test',op,rev,before))
                 self.op_execute(cur,'Journal',(op,rev+1,after,'test'))
+                self.op_execute(cur,'Execution',(op,rev+1,0,0,0,0,0))
                 if after=='RESERVED':
                     for guid in guids:
                         self.op_execute(cur,'Lease',(guid,op,220,guid,100,23))
@@ -74,6 +77,26 @@ class OperationMySQLTests(unittest.TestCase):
         except self.driver.MySQLError:
             conn.rollback()
             raise
+
+    def test_execution_receipts_migrate_once_and_fail_closed(self):
+        self.propose(1)
+        self.propose(2)
+        migration = re.sub(r'(?m)^--.*$', '', (ROOT / 'data/sql/db-characters/'
+            '2026_11_19_02_playerbot_autonomy_execution.sql').read_text())
+        with self.connection.cursor() as cur:
+            # Represent a pre-M3 database: neither receipts nor schema marker.
+            cur.execute('DELETE FROM playerbot_autonomy_execution')
+            for statement in migration.split(';'):
+                if statement.strip(): cur.execute(statement)
+            self.assertEqual(self.row('SELECT execution_mode,revision FROM playerbot_autonomy_execution '
+                                      'WHERE operation_id=1'), (0,0))
+            self.op_execute(cur,'Execution',(2,0,1,991,1,0,1))
+            cur.execute('DELETE FROM playerbot_autonomy_execution WHERE operation_id=2')
+            for statement in migration.split(';'):
+                if statement.strip(): cur.execute(statement)
+            self.assertEqual(self.row('SELECT COUNT(*) FROM playerbot_autonomy_execution WHERE operation_id=2'),(0,))
+            self.assertEqual(self.row('SELECT COUNT(*) FROM playerbot_autonomy_execution WHERE operation_id=0'),(1,))
+        self.connection.commit()
 
     def test_lease_conflict_atomic_and_cleanup(self):
         self.propose(1)
@@ -141,7 +164,7 @@ class OperationMySQLTests(unittest.TestCase):
             ("UPDATE playerbot_autonomy_enrollment SET state='RETIRED' WHERE character_guid=5",
              "UPDATE playerbot_autonomy_enrollment SET state='PERSISTENT' WHERE character_guid=5"),
             ('UPDATE characters SET account=999 WHERE guid=5', 'UPDATE characters SET account=100 WHERE guid=5'),
-            ('INSERT INTO group_member VALUES(5)', 'DELETE FROM group_member'),
+            ('INSERT INTO group_member(memberGuid) VALUES(5)', 'DELETE FROM group_member'),
             ("UPDATE playerbot_autonomy_guild SET phase='QUARANTINED'", "UPDATE playerbot_autonomy_guild SET phase='MANAGED'"),
         ):
             with self.connection.cursor() as cur: cur.execute(mutation)

@@ -22,6 +22,18 @@
 
 namespace PlayerbotAutonomy
 {
+#if AUTONOMY_DC_BRIDGE
+namespace
+{
+std::atomic<OperationRuntime*> BridgeOwnerRuntime{nullptr};
+bool AuthorizeBridge(DcAutonomy::Permit const& p, bool consume)
+{
+    auto* runtime = BridgeOwnerRuntime.load(std::memory_order_acquire);
+    return runtime && runtime->Authorize(p, consume);
+}
+DcAutonomy::Owner const BridgeOwner{DcAutonomy::Version, AuthorizeBridge};
+}
+#endif
 OperationRuntime& Operations()
 {
     static OperationRuntime runtime;
@@ -33,7 +45,12 @@ void OperationRuntime::Configure(OperationSettings settings)
     if (!settings.Valid())
     {
         _settings.Enabled = false;
-        _decision = settings.AssembleGroups ? "group_executor_unavailable" : "invalid_configuration";
+        _decision = "invalid_configuration";
+    }
+    if (settings.AssembleGroups && !Groups().Available())
+    {
+        _settings.Enabled = false;
+        _decision = "core_group_adapter_unavailable";
     }
     _planIn = _refreshIn = 0;
     if (!_settings.Enabled)
@@ -49,6 +66,13 @@ void OperationRuntime::Start(std::string const& info)
     _owner = std::this_thread::get_id();
     _now = _clock ? _clock() : static_cast<uint64>(std::time(nullptr));
     _elapsedMs = 0;
+#if AUTONOMY_DC_BRIDGE
+    _providerIdentity = _ids();
+    if (!_providerIdentity) _providerIdentity = 1;
+    OperationRuntime* expected = nullptr;
+    if (!(BridgeOwnerRuntime.compare_exchange_strong(expected, this) || expected == this) ||
+        !DcAutonomy::RegisterOwner(&BridgeOwner)) _decision = "dungeon_owner_provider_conflict";
+#endif
     // Recovery runs even with activities off. This pool touches module tables
     // only, and all SQL after initialization uses the asynchronous worker.
     _opened = _store.Initialize(info);
@@ -223,11 +247,18 @@ PartyPlan OperationRuntime::Plan(uint32 guild) const
                 m.Reservation = UINT64_MAX;
             candidates.push_back(std::move(m));
         }
-    return PlanParty(candidates, _settings.Rules, guild, faction, _now);
+    auto rules = _settings.Rules;
+    if (_settings.AssembleGroups)
+    {
+        rules.MinLevel = std::max(rules.MinLevel, 70u);
+        rules.MinItemLevel = std::max(rules.MinItemLevel, 115u);
+    }
+    return PlanParty(candidates, rules, guild, faction, _now);
 }
-bool OperationRuntime::Validate(Operation const& operation, bool requireLease) const
+bool OperationRuntime::ManagedGuilds(Operation const& operation, bool stopping) const
 {
-    if (!Guilds().Ready() || !Runtime().ProtectionAvailable())
+    if (!OnWorldThread() || !Runtime().ProtectionAvailable() || !Runtime().Cache().Ready() ||
+        (!stopping && !Guilds().Ready()))
         return false;
     std::set<uint32> guilds;
     for (auto const& m : operation.Members)
@@ -241,10 +272,31 @@ bool OperationRuntime::Validate(Operation const& operation, bool requireLease) c
         if (!safe)
             return false;
     }
+    return true;
+}
+bool OperationRuntime::Validate(Operation const& operation, bool requireLease) const
+{
+    if (!ManagedGuilds(operation)) return false;
     uint32 low = 80, high = 0;
+    bool owned = false;
+    if (operation.Execution == ExecutionMode::RealGroup && operation.Group)
+    {
+        owned = RealGroupExecutor::Owned(operation, Groups().Inspect(operation.Group));
+        if (!owned) return false;
+    }
     for (auto const& member : operation.Members)
     {
         auto m = Observe(member.Guid, member.Guild, true);
+        if (owned)
+        {
+            // The group adapter has verified every live session, exact member
+            // slot, M1 identity, queues and control. Recruitment's deliberately
+            // ungrouped Candidate() is not an availability policy for our group.
+            m.Grouped = m.InInstance = false;
+            m.Online = m.Available = true;
+        }
+        if (operation.Execution == ExecutionMode::RealGroup && (m.Level < 70 || m.EquippedItemLevel < 115))
+            return false;
         if (!RosterRejection(m, _settings.Rules, operation.Guild, operation.Faction, _now, operation.Id).empty() ||
             m.Account != member.Account || m.Role != member.Role || m.Reservation != (requireLease ? operation.Id : 0))
             return false;
@@ -297,6 +349,17 @@ void OperationRuntime::Read(uint64 id)
             bool expectedLeases = durable.State == OperationState::Reserved ||
                                   durable.State == OperationState::Assembling ||
                                   durable.State == OperationState::Active || durable.State == OperationState::Closing;
+            if (_pending && !_before && !SameOperation(durable, *_pending))
+            {
+                // No core action is possible before proposal readback. Reject
+                // the collision without adopting or cancelling the other intent.
+                Runtime().Cache().ReleaseOperation(id);
+                _pending.reset();
+                ++_conflicts;
+                _cooldownUntil = _now + _settings.CooldownSeconds;
+                _decision = "proposal_id_collision_rejected";
+                return;
+            }
             if ((expectedLeases && leases != durable.Members.size()) || (Terminal(durable.State) && leases))
             {
                 ++_failures;
@@ -334,6 +397,10 @@ void OperationRuntime::Read(uint64 id)
             if (Terminal(durable.State))
             {
                 Runtime().Cache().ReleaseOperation(id);
+                _createdGroups.erase(id);
+                _groupProofReady.erase(id);
+                _groupAbsenceReady.erase(id);
+                _restartGroups.erase(id);
                 _operations.erase(id);
                 _decision = durable.Reason;
                 if (_recoverId == id)
@@ -342,9 +409,17 @@ void OperationRuntime::Read(uint64 id)
             else
             {
                 _operations[id] = std::move(durable);
+                auto const& op = _operations[id];
+                if (op.Execution == ExecutionMode::RealGroup && expectedLeases &&
+                    !Runtime().Cache().AcquireOperation(id, ParticipantGuids(op)))
+                {
+                    _decision = "real_operation_recovery_waiting_m1_or_lease_conflict";
+                    _recoverId = id;
+                }
                 if (!_recovered)
                 {
                     _recoverId = id;
+                    if (op.Execution == ExecutionMode::RealGroup) _restartGroups.insert(id);
                     ++_recoveries;
                 }
             }
@@ -372,6 +447,301 @@ void OperationRuntime::RecoverNext()
                                _readback = true;
                            }));
 }
+void OperationRuntime::ReadGroup(Operation const& op, bool absence)
+{
+    ++_queries;
+    _age = 0;
+    _query.emplace((absence ? _store.GroupAbsent(op) : _store.GroupSnapshot(op))
+                       .WithPreparedCallback(
+                           [this, op, absence](PreparedQueryResult result)
+                           {
+                               if (!result || !_operations.count(op.Id) || _operations.at(op.Id).Group != op.Group)
+                               {
+                                   ++_failures;
+                                   _retryIn = 5000;
+                                   return;
+                               }
+                               if (absence)
+                               {
+                                   if (result->Fetch()[0].Get<uint64>() == 1 && Groups().ParticipantsUngrouped(op))
+                                       _groupAbsenceReady.insert(op.Id);
+                                   else
+                                   {
+                                       _decision = "cleanup_waiting_core_group_sql_delete";
+                                       _retryIn = 5000;
+                                   }
+                                   return;
+                               }
+                               auto live = Groups().Inspect(op.Group);
+                               std::set<uint32> committed, authoritative(live.Members.begin(), live.Members.end());
+                               bool valid = RealGroupExecutor::Owned(op, live, true);
+                               do
+                               {
+                                   auto* row = result->Fetch();
+                                   if (row[0].IsNull() || row[1].IsNull() || row[2].IsNull() ||
+                                       row[0].Get<uint32>() != op.Leader || row[2].Get<uint32>() != op.Group)
+                                   {
+                                       valid = false;
+                                       break;
+                                   }
+                                   valid = valid && committed.insert(row[1].Get<uint32>()).second;
+                               } while (result->NextRow());
+                               if (valid && committed == authoritative)
+                                   _groupProofReady.insert(op.Id);
+                               else
+                               {
+                                   _decision = _now >= op.Deadline ? "manual_core_group_sql_creation_unconfirmed"
+                                                                   : "waiting_core_group_sql_creation";
+                                   _retryIn = 5000;
+                               }
+                           }));
+}
+#if AUTONOMY_DC_BRIDGE
+bool OperationRuntime::Authorize(DcAutonomy::Permit const& p, bool consume)
+{
+    if (!OnWorldThread() || !_permit || !DcAutonomy::Same(p, *_permit) || p.owner != _providerIdentity ||
+        !_settings.Enabled || _settings.DryRun || !_settings.AssembleGroups || !_settings.TrustedDungeon ||
+        _settings.KillSwitch || !_operations.count(p.operation))
+        return false;
+    auto const& op = _operations.at(p.operation);
+    if (op.Execution != ExecutionMode::RealGroup || !op.GroupConfirmed || op.Group != p.group ||
+        op.Leader != p.leader || Terminal(op.State) || op.State == OperationState::Closing ||
+        op.State == OperationState::Recovering || _now >= op.Deadline || _now >= op.LeaseUntil || !Validate(op))
+        return false;
+    auto guids = ParticipantGuids(op);
+    if (!std::equal(guids.begin(), guids.end(), p.members.begin()))
+        return false;
+    if (!_permitConsumed && (p.revision != op.Revision || p.expires <= _now))
+        return false;
+    if (consume)
+    {
+        if (_permitConsumed)
+            return false;
+        _permitConsumed = true;
+    }
+    return true;
+}
+#endif
+Operation OperationRuntime::CloseReal(Operation const& current)
+{
+    Operation next = current;
+    // Restore local ownership before examining/changing anything after restart.
+    if (!Runtime().Cache().AcquireOperation(current.Id, ParticipantGuids(current)))
+    {
+        _decision = "recovery_waiting_for_m1_or_lease_conflict";
+        return next;
+    }
+    if (!current.Group && _createdGroups.count(current.Id))
+    {
+        next.Group = _createdGroups.at(current.Id);
+        next.State = OperationState::Closing;
+        next.Reason = "reconcile_local_core_group_receipt";
+        return next;
+    }
+#if AUTONOMY_DC_BRIDGE
+    if (_permit && _permit->operation == current.Id && _permitConsumed)
+    {
+        auto* bridge = DcAutonomy::GetExecutor();
+        if (bridge)
+            _lastDungeonStatus = bridge->stop(*_permit);
+        if (!bridge || !_lastDungeonStatus.quiescent)
+        {
+            _decision = "cleanup_pending_dungeon_executor_stop";
+            return next;
+        }
+    }
+#endif
+    auto live = Groups().Inspect(current.Group);
+    if (_restartGroups.count(current.Id) && current.Group && live.Id)
+    {
+        _decision = "manual_restart_group_ownership_reconciliation";
+        return next;
+    }
+    if (live.Id && !ManagedGuilds(current, true))
+    {
+        _decision = "manual_cleanup_guild_ownership_changed_or_unknown";
+        return next;
+    }
+    if (current.Group && !current.GroupConfirmed && !_restartGroups.count(current.Id))
+    {
+        if (_groupProofReady.erase(current.Id))
+        {
+            next.GroupConfirmed = true;
+            next.State = OperationState::Closing;
+            next.Reason = "durable_core_group_confirmed_for_cleanup";
+        }
+        else if (live.Id)
+            ReadGroup(current, false);
+        else
+            _decision = "manual_core_creation_not_confirmed_before_group_loss";
+        return next;
+    }
+    ++_groupCalls;
+    auto cleaned = RealGroupExecutor(Groups()).Cleanup(current);
+    _decision = cleaned.Reason;
+    if (cleaned.Clean)
+    {
+        if (_groupAbsenceReady.erase(current.Id))
+        {
+            next.State = current.Succeeded ? OperationState::Completed : OperationState::Cancelled;
+            next.Reason = cleaned.Reason;
+            _cooldownUntil = _now + _settings.CooldownSeconds;
+        }
+        else
+            ReadGroup(current, true);
+    }
+    else if (current.State != OperationState::Closing)
+    {
+        next.State = OperationState::Closing;
+        next.Reason = cleaned.Reason;
+    }
+    return next;
+}
+Operation OperationRuntime::AdvanceReal(Operation const& current, bool recovering)
+{
+    Operation next = current;
+    auto change = [&](OperationState state, std::string reason)
+    {
+        next.State = state;
+        if (state == OperationState::Closing)
+        {
+            _lastRealOperation = current.Id;
+            _lastRealReason = reason;
+        }
+        next.Reason = std::move(reason);
+    };
+    bool enabled = _settings.Enabled && !_settings.DryRun && _settings.AssembleGroups && !_settings.KillSwitch;
+    bool closing =
+        recovering || current.State == OperationState::Closing || current.State == OperationState::Recovering;
+    if (!closing && (!enabled || _now >= current.Deadline || _now >= current.LeaseUntil))
+        change(OperationState::Closing, enabled ? "real_operation_timeout" : "real_feature_disabled");
+    else if (closing)
+        next = CloseReal(current);
+    else if (!Validate(current))
+        change(OperationState::Closing, "real_participant_or_group_changed");
+    else if (current.State == OperationState::Proposed)
+        change(OperationState::Validated, "real_participants_validated");
+    else if (current.State == OperationState::Validated)
+        change(OperationState::Reserved, "real_durable_reservations_requested");
+    else if (current.State == OperationState::Reserved)
+    {
+        next.CreationFenced = true;
+        _creationAllowed = current.Id; // Usable only after matching SQL readback.
+        change(OperationState::Assembling, "real_creation_fenced");
+    }
+    else if (current.State == OperationState::Assembling)
+    {
+        if (_now >= current.CreatedAt + _settings.AssemblySeconds)
+            change(OperationState::Closing, "real_assembly_or_colocation_timeout");
+        else if (!current.Group)
+        {
+            bool permission = _creationAllowed == current.Id;
+            _creationAllowed = 0; // Burn before core API, including partial failures.
+            ++_groupCalls;
+            auto result = RealGroupExecutor(Groups()).Assemble(current, permission);
+            next.Group = result.Group;
+            if (result.Group)
+                _createdGroups[current.Id] = result.Group;
+            change(result.Ready ? OperationState::Assembling : OperationState::Closing, result.Reason);
+        }
+        else
+        {
+            auto group = Groups().Inspect(current.Group);
+            if (!current.GroupConfirmed)
+            {
+                if (_groupProofReady.erase(current.Id))
+                {
+                    next.GroupConfirmed = true;
+                    change(OperationState::Assembling, "durable_core_group_confirmed");
+                }
+                else
+                {
+                    ReadGroup(current, false);
+                    return next;
+                }
+            }
+            else
+            {
+                _decision = "real_group_ready_waiting_eligible_colocation";
+#if AUTONOMY_DC_BRIDGE
+                auto* bridge = DcAutonomy::GetExecutor();
+                if (!_settings.TrustedDungeon)
+                    _decision = "trusted_dungeon_disabled_group_ready";
+                else if (!bridge)
+                    _decision = "dungeon_adapter_unavailable";
+                else if (group.Map == 574 && group.Instance)
+                {
+                    if (!_permit || _permit->operation != current.Id || (!_permitConsumed && _now >= _permit->expires))
+                    {
+                        DcAutonomy::Permit p;
+                        p.owner = _providerIdentity;
+                        p.operation = current.Id;
+                        p.revision = current.Revision;
+                        p.nonce = _ids();
+                        if (!p.nonce)
+                            p.nonce = 1;
+                        p.expires = _now + 10;
+                        p.group = current.Group;
+                        p.leader = current.Leader;
+                        p.map = 574;
+                        p.instance = group.Instance;
+                        auto guids = ParticipantGuids(current);
+                        std::copy(guids.begin(), guids.end(), p.members.begin());
+                        _permit = p;
+                        _permitConsumed = false;
+                    }
+                    // An accepted start is never retried. A delayed SQL ack cannot
+                    // create another run or consume a second permit.
+                    auto status = _permitConsumed ? bridge->status(*_permit) : bridge->start(*_permit);
+                    _lastDungeonStatus = status;
+                    _decision = status.reason;
+                    if (status.state == DcAutonomy::State::Running || status.state == DcAutonomy::State::Paused)
+                        change(OperationState::Active, "trusted_dungeon_start_acknowledged");
+                    else if (_permitConsumed)
+                        change(OperationState::Closing, "trusted_dungeon_start_failed");
+                }
+#else
+                (void)group;
+                if (_settings.TrustedDungeon)
+                    _decision = "dungeon_adapter_unavailable";
+#endif
+            }
+        }
+    }
+    else if (current.State == OperationState::Active)
+    {
+#if AUTONOMY_DC_BRIDGE
+        auto* bridge = DcAutonomy::GetExecutor();
+        if (!_settings.TrustedDungeon || !bridge || !_permit || _permit->operation != current.Id)
+            change(OperationState::Closing, "dungeon_adapter_or_feature_unavailable");
+        else
+        {
+            auto status = bridge->status(*_permit);
+            _lastDungeonStatus = status;
+            _decision = status.reason;
+            if (DcAutonomy::Terminal(status.state))
+            {
+                next.Succeeded = status.state == DcAutonomy::State::Completed;
+                change(OperationState::Closing, status.reason);
+            }
+            else if (!status.lastProgress ||
+                     (_now >= status.lastProgress && _now - status.lastProgress >= _settings.ProgressSeconds))
+                change(OperationState::Closing, "dungeon_no_progress_timeout");
+        }
+#else
+        change(OperationState::Closing, "dungeon_adapter_unavailable");
+#endif
+    }
+    else
+        change(OperationState::Closing, "unsupported_real_operation_state");
+    if (!SameOperation(current, next))
+    {
+        ++next.Revision;
+        ++next.Attempts;
+        next.ChangedAt = _now;
+    }
+    return next;
+}
 void OperationRuntime::Update(uint32 diff)
 {
     if (!OnWorldThread() || !_opened)
@@ -383,9 +753,9 @@ void OperationRuntime::Update(uint32 diff)
     _now = std::max(_now, _clock ? _clock() : static_cast<uint64>(std::time(nullptr)));
     // Absolute leases are never renewed. Local cleanup does not erase M1.
     for (auto const& item : _operations)
-        if (_now >= item.second.LeaseUntil)
+        if (item.second.Execution == ExecutionMode::Simulated && _now >= item.second.LeaseUntil)
             Runtime().Cache().ReleaseOperation(item.first);
-    if (_pending && _now >= _pending->LeaseUntil)
+    if (_pending && _pending->Execution == ExecutionMode::Simulated && _now >= _pending->LeaseUntil)
         Runtime().Cache().ReleaseOperation(_pending->Id);
     _retryIn = diff >= _retryIn ? 0 : _retryIn - diff;
     if (_query || _transaction)
@@ -411,7 +781,13 @@ void OperationRuntime::Update(uint32 diff)
     {
         auto current = _operations.at(_recoverId);
         auto next = current;
-        if (current.State != OperationState::Recovering)
+        if (current.Execution == ExecutionMode::RealGroup)
+        {
+            next = AdvanceReal(current, true);
+            if (!SameOperation(current, next)) Save(std::move(next), &current);
+            else _retryIn = 5000;
+        }
+        else if (current.State != OperationState::Recovering)
         {
             next.State = OperationState::Recovering;
             ++next.Revision;
@@ -421,7 +797,7 @@ void OperationRuntime::Update(uint32 diff)
         }
         else
             next = NextOperation(current, _now, false, false);
-        Save(std::move(next), &current);
+        if (current.Execution == ExecutionMode::Simulated) Save(std::move(next), &current);
     }
     else if (!_recovered)
         RecoverNext();
@@ -437,8 +813,9 @@ void OperationRuntime::Update(uint32 diff)
             auto current = it->second;
             // Unready enrollment/ownership is a rejection, never an authority
             // to continue. Every phase independently revalidates participants.
-            auto next = NextOperation(current, _now, _settings.Enabled && !_settings.DryRun, Validate(current));
-            Save(std::move(next), &current);
+            auto next = current.Execution == ExecutionMode::RealGroup ? AdvanceReal(current) :
+                NextOperation(current, _now, _settings.Enabled && !_settings.DryRun, Validate(current));
+            if (!SameOperation(current, next)) Save(std::move(next), &current);
             _planTurn = true;
         }
         else if (_settings.Enabled && Guilds().Ready())
@@ -455,20 +832,30 @@ void OperationRuntime::Update(uint32 diff)
                 _planningGuild = it->first;
                 auto plan = Plan(it->second.Guild);
                 _decision = plan.Reason;
-                if (plan.Complete() && !_settings.DryRun && _operations.size() < _settings.MaxConcurrent)
+                if (plan.Complete() && !_settings.DryRun && !_settings.KillSwitch && _now >= _cooldownUntil &&
+                    _operations.size() < _settings.MaxConcurrent &&
+                    (!_settings.AssembleGroups || std::none_of(_operations.begin(), _operations.end(),
+                        [](auto const& item) { return item.second.Execution == ExecutionMode::RealGroup; })))
                 {
                     Operation op;
                     do
                     {
                         op.Id = _ids() & 0x7fffffffffffffffULL;
-                    } while (!op.Id);
+                    } while (!op.Id || _operations.count(op.Id));
                     op.Guild = plan.Guild;
                     op.Faction = plan.Faction;
                     op.Leader = plan.Leader;
                     op.Members = std::move(plan.Members);
+                    if (_settings.AssembleGroups)
+                    {
+                        op.Execution = ExecutionMode::RealGroup;
+                        op.Reason = "real_group_proposed";
+                    }
                     op.CreatedAt = op.ChangedAt = _now;
-                    op.Deadline = _now + _settings.TimeoutSeconds;
-                    op.LeaseUntil = _now + _settings.LeaseSeconds;
+                    op.Deadline = _now + (op.Execution == ExecutionMode::RealGroup ?
+                        _settings.RunSeconds + _settings.AssemblySeconds : _settings.TimeoutSeconds);
+                    op.LeaseUntil = op.Deadline + (op.Execution == ExecutionMode::RealGroup ?
+                        60 : _settings.LeaseSeconds - _settings.TimeoutSeconds);
                     if (Validate(op, false) && Runtime().Cache().AcquireOperation(op.Id, ParticipantGuids(op)))
                         Save(std::move(op), nullptr);
                     else
@@ -512,6 +899,17 @@ void OperationRuntime::Stop()
         Runtime().Cache().ReleaseOperation(_pending->Id);
     _pending.reset();
     _before.reset();
+#if AUTONOMY_DC_BRIDGE
+    OperationRuntime* expected = this;
+    BridgeOwnerRuntime.compare_exchange_strong(expected, nullptr);
+    _permit.reset();
+    _permitConsumed = false;
+#endif
+    _creationAllowed = 0;
+    _restartGroups.clear();
+    _groupProofReady.clear();
+    _groupAbsenceReady.clear();
+    _createdGroups.clear();
     _operations.clear();
     _roster.clear();
     _completeGuilds.clear();
@@ -527,10 +925,14 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
     if (!OnWorldThread())
         return "reason=wrong_world_thread";
     std::ostringstream out;
-    out << "m2 enabled=" << _settings.Enabled << " dry_run=" << _settings.DryRun
-        << " assembly=simulated store=" << _opened << " recovered=" << _recovered << " snapshots=" << _roster.size()
+    out << "operations enabled=" << _settings.Enabled << " dry_run=" << _settings.DryRun
+        << " assembly=" << (_settings.AssembleGroups ? "real" : "simulated")
+        << " store=" << _opened << " recovered=" << _recovered << " snapshots=" << _roster.size()
         << " operations=" << _operations.size() << " pending_write=" << bool(_pending) << " queries=" << _queries
         << " writes=" << _writes << " failures=" << _failures << " lease_conflicts=" << _conflicts
+        << " group_checks=" << _groupCalls << " real_gate=" << _settings.AssembleGroups
+        << " trusted_gate=" << _settings.TrustedDungeon << " kill_switch=" << _settings.KillSwitch
+        << " last_real_id=" << _lastRealOperation << " last_real_reason=" << _lastRealReason
         << " recoveries=" << _recoveries << " ticks=" << _ticks << " last_tick_us=" << _lastTickUs
         << " max_tick_us=" << _maxTickUs << " decision=" << _decision;
     uint32 reserved = 0;
@@ -540,6 +942,8 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
         for (auto guid : ParticipantGuids(op))
             reserved += Runtime().Cache().OperationOwner(guid) == op.Id;
         out << " [id=" << op.Id << " guild=" << op.Guild << " state=" << OperationStateName(op.State)
+            << " mode=" << (op.Execution == ExecutionMode::RealGroup ? "REAL" : "SIMULATED")
+            << " group=" << op.Group << " creation_fenced=" << op.CreationFenced << " group_sql_confirmed=" << op.GroupConfirmed
             << " age_s=" << (_now >= op.CreatedAt ? _now - op.CreatedAt : 0) << " reason=" << op.Reason << ']';
     }
     if (_pending)
@@ -551,6 +955,12 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
             << " outcome=awaiting_durable_readback]";
     }
     out << " reserved=" << reserved;
+#if AUTONOMY_DC_BRIDGE
+    out << " dc_state=" << DcAutonomy::StateName(_lastDungeonStatus.state)
+        << " dc_operation=" << _lastDungeonStatus.operation << " dc_run=" << _lastDungeonStatus.run
+        << " dc_map=" << _lastDungeonStatus.map << " dc_instance=" << _lastDungeonStatus.instance
+        << " dc_quiescent=" << _lastDungeonStatus.quiescent << " dc_reason=" << _lastDungeonStatus.reason;
+#endif
     if (guild)
     {
         auto plan = Plan(guild);

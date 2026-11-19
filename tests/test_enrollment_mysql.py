@@ -48,7 +48,12 @@ class EnrollmentMySQLTests(unittest.TestCase):
             cur.execute(
                 "CREATE TABLE IF NOT EXISTS guild_member (guid INT UNSIGNED PRIMARY KEY, guildid INT UNSIGNED) ENGINE=InnoDB"
             )
-            cur.execute("CREATE TABLE IF NOT EXISTS group_member (memberGuid INT UNSIGNED PRIMARY KEY) ENGINE=InnoDB")
+            cur.execute("DROP TABLE IF EXISTS group_member")
+            cur.execute("CREATE TABLE group_member (memberGuid INT UNSIGNED PRIMARY KEY, "
+                        "guid INT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB")
+            cur.execute("CREATE TABLE IF NOT EXISTS `groups` (guid INT UNSIGNED PRIMARY KEY, "
+                        "leaderGuid INT UNSIGNED NOT NULL, KEY (leaderGuid)) ENGINE=InnoDB")
+            cur.execute("DELETE FROM `groups`")
             for _ in range(2):
                 for path in sorted((ROOT / "data/sql/db-characters").glob("*.sql")):
                     sql = re.sub(r"(?m)^--.*$", "", path.read_text())
@@ -237,7 +242,7 @@ class EnrollmentMySQLTests(unittest.TestCase):
             self.transition("RETIRE", "PERSISTENT", 2)
         with self.connection.cursor() as cur:
             cur.execute("DELETE FROM guild_member")
-            cur.execute("INSERT INTO group_member VALUES(1)")
+            cur.execute("INSERT INTO group_member(memberGuid) VALUES(1)")
         self.connection.commit()
         with self.assertRaises(self.driver.MySQLError):
             self.transition("RETIRE", "PERSISTENT", 2)

@@ -104,4 +104,8 @@ Every stage is idempotent and time-bounded. Store IDs and intentional state, not
 
 The [M2 implementation](M2_OPERATIONS.md) now supplies bounded managed-guild
 roster intelligence and the shared durable lifecycle through a simulated
-assembly boundary. Actual groups and activity executors remain future gates.
+assembly boundary. The [M3A candidate](M3A_RELEASE.md) adds an independently
+gated real executor, creation receipts, asynchronous core-group readback and
+a trusted DC consumer. Restart groups, ownership loss, unsafe instance bindings
+and unavailable stop/readback evidence require protected reconciliation.
+Travel/entry/exit and game-server acceptance remain separate gates.

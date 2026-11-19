@@ -37,6 +37,13 @@ private:
         s.Enabled = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Enable", false) &&
                     sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.Enable", false);
         s.AssembleGroups = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.AssembleGroups", false);
+        s.TrustedDungeon = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.TrustedDungeon", false);
+        s.KillSwitch = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.KillSwitch", false);
+        s.MaxReal = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.MaxReal", 1);
+        s.AssemblySeconds = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.AssemblySeconds", 90);
+        s.ProgressSeconds = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.ProgressSeconds", 600);
+        s.RunSeconds = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.RunSeconds", 3600);
+        s.CooldownSeconds = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.CooldownSeconds", 300);
         s.DryRun = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.DryRun", true);
         s.MaxConcurrent = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.MaxConcurrent", 1);
         s.IntervalMs = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.IntervalMs", 5000);
@@ -95,6 +102,7 @@ private:
 }  // namespace
 void AddSC_playerbot_autonomy_operation_module()
 {
+    PlayerbotAutonomy::RegisterCoreGroupObserver();
     new AutonomyOperationWorld();
     new AutonomyOperationCommands();
 }
