@@ -43,6 +43,8 @@ std::string RosterRejection(RosterMember const& m, RosterRules const& r, std::ui
         return "human_selfbot_or_unowned_session";
     if (!m.Persistent)
         return "m1_not_persistent";
+    if (!m.Class || m.Class > 11 || m.Class == 10)
+        return "unknown_or_ineligible_class";
     if (!m.ObservedAt || m.ObservedAt > now || now - m.ObservedAt > r.MaxAge)
         return "stale_roster";
     if (m.Faction != faction || faction > 1)

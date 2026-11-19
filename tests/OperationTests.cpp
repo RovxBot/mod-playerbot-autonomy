@@ -56,6 +56,8 @@ int main()
     reject("human_selfbot_or_unowned_session");
     party[0].Persistent = false;
     reject("m1_not_persistent");
+    party[0].Class = 10;
+    reject("unknown_or_ineligible_class");
     party[0].Identity = false;
     reject("unknown_identity");
     party[0].ObservedAt = 1;

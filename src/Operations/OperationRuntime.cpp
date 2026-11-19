@@ -542,10 +542,26 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
         out << " [id=" << op.Id << " guild=" << op.Guild << " state=" << OperationStateName(op.State)
             << " age_s=" << (_now >= op.CreatedAt ? _now - op.CreatedAt : 0) << " reason=" << op.Reason << ']';
     }
+    if (_pending)
+    {
+        if (!_operations.count(_pending->Id))
+            for (auto guid : ParticipantGuids(*_pending))
+                reserved += Runtime().Cache().OperationOwner(guid) == _pending->Id;
+        out << " [pending_id=" << _pending->Id << " state=" << OperationStateName(_pending->State)
+            << " outcome=awaiting_durable_readback]";
+    }
     out << " reserved=" << reserved;
     if (guild)
     {
         auto plan = Plan(guild);
+        uint32 online = 0, equipment = 0, professions = 0;
+        for (auto const& item : _roster)
+            if (item.second.Guild == guild)
+            {
+                online += item.second.Online;
+                equipment += item.second.EquipmentKnown;
+                professions += !item.second.Professions.empty();
+            }
         // Recheck selected members without refreshing/queuing the cache. A
         // command must not describe a stale former bot as ready right now.
         for (auto const& member : plan.Members)
@@ -561,7 +577,8 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
             }
         }
         out << " guild=" << guild << " tanks=" << plan.Tanks << " healers=" << plan.Healers << " dps=" << plan.Dps
-            << " plan=" << plan.Reason;
+            << " plan=" << plan.Reason << " online_snapshots=" << online << " equipment_known=" << equipment
+            << " profession_capable=" << professions;
         for (auto const& reason : plan.Rejections)
             out << " reject_" << reason.first << '=' << reason.second;
         if (plan.Complete() && Guilds().Ready())
