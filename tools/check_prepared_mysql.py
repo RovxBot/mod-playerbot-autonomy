@@ -75,6 +75,8 @@ def main():
         build = Path(tmp)
         (build / "CoreQueryResult.h").write_text(f'#include "{database / "QueryResult.h"}"\n')
         sources = [ROOT / "tests/PreparedMySQLTests.cpp", ROOT / "src/Persistence/EnrollmentStore.cpp",
+                   ROOT / "src/Operations/OperationStore.cpp", ROOT / "src/Operations/OperationCoordinator.cpp",
+                   ROOT / "src/Operations/OperationRuntime.cpp", ROOT / "src/Operations/RosterPlanner.cpp",
                    ROOT / "src/Persistence/EnrollmentRuntime.cpp", ROOT / "src/Persistence/EnrollmentTransition.cpp",
                    ROOT / "src/Guild/GuildStore.cpp", ROOT / "src/Guild/GuildDirector.cpp",
                    ROOT / "src/Guild/GuildRuntime.cpp",

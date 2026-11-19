@@ -101,3 +101,7 @@ Every stage is idempotent and time-bounded. Store IDs and intentional state, not
 - Measure map/world ticks, AI delays, DB queries, active bot count, concurrent operations and recovery.
 - Features start disabled; require a live test on the intended core and exact fork commits before rollout.
 - Protect existing RDF fill, GM dungeon-clear test runs and existing auction/profession workflows from regressions.
+
+The [M2 implementation](M2_OPERATIONS.md) now supplies bounded managed-guild
+roster intelligence and the shared durable lifecycle through a simulated
+assembly boundary. Actual groups and activity executors remain future gates.

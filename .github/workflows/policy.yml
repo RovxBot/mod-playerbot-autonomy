@@ -52,6 +52,20 @@ jobs:
         run: |
           c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/GuildDirectorTests.cpp src/Guild/GuildDirector.cpp -o /tmp/autonomy-guild-tests
           /tmp/autonomy-guild-tests
+      - name: Test curated guild name pool
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/GuildNameTests.cpp src/Guild/GuildDirector.cpp -o /tmp/autonomy-name-tests
+          /tmp/autonomy-name-tests
+      - name: Test roster and operation policies
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/OperationTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
+            -o /tmp/autonomy-operation-tests
+          /tmp/autonomy-operation-tests
       - name: Test recruitment controller
         env:
           CXX_STANDARD: ${{ matrix.standard }}
@@ -126,7 +140,12 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             src/common
+            src/server/game/Globals/ObjectMgr.cpp
+            src/server/game/Globals/ObjectMgr.h
+            src/server/game/World/World.h
+            src/server/shared
             src/server/database
+            deps/utf8cpp
             deps/fmt
             deps/SFMT
       - name: Checkout pinned maintenance interface
@@ -154,6 +173,8 @@ jobs:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
           AUTONOMY_MYSQL_DATABASE: autonomy_test
         run: python3 -m unittest discover -s tests -p 'test_*mysql.py' -v
+      - name: Validate names using pinned actual core functions
+        run: python3 tools/check_guild_names.py --core _deps/core
       - name: Exercise binary prepared stores and core decoder
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1

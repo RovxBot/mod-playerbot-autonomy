@@ -2,9 +2,11 @@
 // directory name "mod-playerbot-autonomy".
 void AddSC_playerbot_autonomy_module();
 void AddSC_playerbot_autonomy_guild_module();
+void AddSC_playerbot_autonomy_operation_module();
 
 void Addmod_playerbot_autonomyScripts()
 {
     AddSC_playerbot_autonomy_module();
     AddSC_playerbot_autonomy_guild_module();
+    AddSC_playerbot_autonomy_operation_module();
 }

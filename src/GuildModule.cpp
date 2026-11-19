@@ -100,6 +100,13 @@ private:
             handler->SendSysMessage(PlayerbotAutonomy::Guilds().Audit(guid));
             return true;
         }
+        if (action == "names")
+        {
+            if (in >> extra)
+                return false;
+            handler->SendSysMessage(PlayerbotAutonomy::Guilds().Names());
+            return true;
+        }
         if (action == "plan")
         {
             uint32 slot = 0;

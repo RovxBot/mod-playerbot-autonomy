@@ -7,6 +7,7 @@
 #include <set>
 #include <shared_mutex>
 #include <unordered_map>
+#include <vector>
 
 #include "EnrollmentState.h"
 
@@ -100,6 +101,9 @@ public:
     void SetActivityEnabled(bool enabled) { _activity.store(enabled, std::memory_order_release); }
     bool Reserve(std::uint32_t guid)
     {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        if (_operationLeases.count(guid))
+            return false;
         std::uint32_t expected = 0;
         if (!guid || !_reserved.compare_exchange_strong(expected, guid))
             return false;
@@ -107,9 +111,46 @@ public:
         return true;
     }
     std::uint32_t Reserved() const { return _reserved.load(std::memory_order_acquire); }
+    // World-thread batch publication before any operation persistence. The
+    // existing M1 provider remains the only routine-maintenance authority.
+    bool AcquireOperation(std::uint64_t operation, std::vector<std::uint32_t> const& guids)
+    {
+        if (!operation || guids.empty() || guids.size() > 25)
+            return false;
+        std::unique_lock<std::shared_mutex> lock(_mutex);
+        std::set<std::uint32_t> unique;
+        for (auto guid : guids)
+        {
+            auto lease = _operationLeases.find(guid);
+            auto r = _records.find(guid);
+            if (!guid || !unique.insert(guid).second || Reserved() == guid ||
+                (lease != _operationLeases.end() && lease->second != operation) || r == _records.end() ||
+                !r->second.IdentityValid || !r->second.AccountIsRandomBot ||
+                r->second.State != EnrollmentState::Persistent)
+                return false;
+        }
+        for (auto guid : guids)
+            _operationLeases[guid] = operation;
+        return true;
+    }
+    std::uint64_t OperationOwner(std::uint32_t guid) const
+    {
+        std::shared_lock<std::shared_mutex> lock(_mutex);
+        auto found = _operationLeases.find(guid);
+        return found == _operationLeases.end() ? 0 : found->second;
+    }
+    void ReleaseOperation(std::uint64_t operation)
+    {
+        std::unique_lock<std::shared_mutex> lock(_mutex);
+        for (auto it = _operationLeases.begin(); it != _operationLeases.end();)
+            if (it->second == operation)
+                it = _operationLeases.erase(it);
+            else
+                ++it;
+    }
     bool LoginBlocked(std::uint32_t guid) const
     {
-        return guid && _loginBlocked.load(std::memory_order_acquire) == guid;
+        return guid && (_loginBlocked.load(std::memory_order_acquire) == guid || OperationOwner(guid));
     }
     void AllowLogin(std::uint32_t guid)
     {
@@ -178,6 +219,7 @@ private:
     std::set<std::uint32_t> _keys;
     std::set<std::uint32_t> _dirty;
     std::unordered_map<std::uint32_t, EnrollmentRecord> _records;
+    std::unordered_map<std::uint32_t, std::uint64_t> _operationLeases;
     std::unordered_map<std::uint32_t, std::uint64_t> _invalidations;
     std::uint64_t _version = 0;
 };

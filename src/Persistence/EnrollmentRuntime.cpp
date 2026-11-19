@@ -521,6 +521,8 @@ EnrollmentDiagnosis EnrollmentRuntime::Observe(uint32 lowGuid, EnrollmentRequest
     diagnosis.Facts.IsAuthorized = true;
     diagnosis.Facts.HasRequestId = true;
     diagnosis.Facts.CurrentlyGuilded = diagnosis.Guild != 0;
+    diagnosis.Facts.HasActiveLease = _cache.OperationOwner(lowGuid) != 0;
+    diagnosis.Facts.HasActiveOperation = diagnosis.Facts.HasActiveLease;
     diagnosis.Facts.IsGrouped = readPlayerFacts ? (player->GetGroup() || player->GetOriginalGroup()) : !group.IsEmpty();
     return diagnosis;
 }

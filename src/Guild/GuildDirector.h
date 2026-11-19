@@ -1,5 +1,6 @@
 #ifndef PLAYERBOT_AUTONOMY_GUILD_DIRECTOR_H
 #define PLAYERBOT_AUTONOMY_GUILD_DIRECTOR_H
+#include "GuildNamePool.h"
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -53,6 +54,7 @@ public:
     virtual ~GuildPort() = default;
     virtual bool OnWorldThread() const = 0;
     virtual bool Ready() const = 0;
+    virtual GuildNameChoice ChooseName() const = 0;
     virtual std::map<std::uint32_t, GuildIntent> const& Intents() const = 0;
     virtual bool Persist(GuildIntent const& next, std::optional<GuildPhase> before) = 0;
     virtual std::uint32_t NextCandidate(std::uint32_t cursor) const = 0;

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -135,15 +136,35 @@ struct WorldSession
     uint32 Account = 7;
     uint32 GetAccountId() const { return Account; }
 };
+struct Player;
+struct Item
+{
+    bool Broken = false;
+    bool IsBroken() const { return Broken; }
+};
+inline constexpr uint8 INVENTORY_SLOT_BAG_0 = 0, EQUIPMENT_SLOT_START = 0, EQUIPMENT_SLOT_END = 19;
+inline constexpr uint8 EQUIPMENT_SLOT_MAINHAND = 15;
 struct PlayerbotAI
 {
     bool HumanMaster = false;
+    bool Tank = false, Healer = false, Dps = true;
+    uint32 ItemLevel = 100;
+    static bool IsTank(Player*, bool = false);
+    static bool IsHeal(Player*, bool = false);
+    static bool IsDps(Player*, bool = false);
+    uint32 GetEquipGearScore(Player*) const { return ItemLevel; }
     bool HasGameClientMaster() const { return HumanMaster; }
 };
 struct Player
 {
     uint32 Guid = 42;
     uint32 Guild = 0;
+    uint32 Level = 40, Spec = 0;
+    std::map<uint8, uint32> Talents{{0,31},{1,0},{2,0}};
+    Item Weapon;
+    uint32 GetLevel() const { return Level; }
+    Item* GetItemByPos(uint8, uint8 slot) { return slot == EQUIPMENT_SLOT_MAINHAND ? &Weapon : nullptr; }
+    uint32 GetPureSkillValue(uint32 skill) const { return skill == 164 ? 225 : 0; }
     bool Grouped = false;
     bool OriginalGrouped = false;
     bool Online = true;
@@ -183,7 +204,11 @@ struct Player
     bool GetGroup() const { return Grouped; }
     bool GetOriginalGroup() const { return OriginalGrouped; }
 };
+inline bool PlayerbotAI::IsTank(Player* p, bool) { return p->AI.Tank; }
+inline bool PlayerbotAI::IsHeal(Player* p, bool) { return p->AI.Healer; }
+inline bool PlayerbotAI::IsDps(Player* p, bool) { return p->AI.Dps; }
 inline Player FakePlayer;
+inline std::unordered_map<uint32, Player> FakeOtherPlayers;
 inline bool FakeClientAccountSession = false;
 struct WorldSessionMgr
 {
@@ -198,6 +223,8 @@ namespace ObjectAccessor
 {
 inline Player* FindConnectedPlayer(ObjectGuid guid)
 {
+    auto found = FakeOtherPlayers.find(guid.Value);
+    if (found != FakeOtherPlayers.end()) return found->second.Online ? &found->second : nullptr;
     return FakePlayer.Online && guid.Value == FakePlayer.Guid ? &FakePlayer : nullptr;
 }
 }  // namespace ObjectAccessor
@@ -210,6 +237,7 @@ struct CharacterCache
         ObjectGuid GroupGuid;
         std::string Name = "Fixture";
         uint32 Faction = 0;
+        uint32 Level = 40;
     };
     std::unordered_map<uint32, Entry> Entries;
     mutable Entry Fallback;
