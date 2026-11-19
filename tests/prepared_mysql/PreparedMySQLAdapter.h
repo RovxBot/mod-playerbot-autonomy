@@ -26,6 +26,7 @@ public:
     }
     bool InvokeIfReady()
     {
+        if (!FakeDatabaseReady) return false;
         _callback(_result);
         return true;
     }
@@ -41,6 +42,7 @@ public:
     void AfterComplete(std::function<void(bool)> callback) { _callback = std::move(callback); }
     bool InvokeIfReady()
     {
+        if (!FakeDatabaseReady) return false;
         _callback(_result);
         return true;
     }

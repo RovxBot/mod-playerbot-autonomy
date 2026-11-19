@@ -58,6 +58,14 @@ jobs:
         run: |
           c++ -std="$CXX_STANDARD" -pthread -Wall -Wextra -Werror -pedantic -Isrc tests/GuildNameTests.cpp src/Guild/GuildDirector.cpp -o /tmp/autonomy-name-tests
           /tmp/autonomy-name-tests
+      - name: Test roster and operation policies
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/OperationTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
+            -o /tmp/autonomy-operation-tests
+          /tmp/autonomy-operation-tests
       - name: Test recruitment controller
         env:
           CXX_STANDARD: ${{ matrix.standard }}

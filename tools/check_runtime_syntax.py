@@ -46,6 +46,11 @@ def main() -> int:
             for path in (
                 "src/AutonomyModule.cpp",
                 "src/GuildModule.cpp",
+                "src/OperationModule.cpp",
+                "src/Operations/RosterPlanner.cpp",
+                "src/Operations/OperationCoordinator.cpp",
+                "src/Operations/OperationStore.cpp",
+                "src/Operations/OperationRuntime.cpp",
                 "src/Guild/GuildDirector.cpp",
                 "src/Guild/GuildNameValidation.cpp",
                 "src/Guild/RecruitmentDirector.cpp",
