@@ -35,11 +35,29 @@ VALUES (?,?,?,(SELECT c.account FROM characters c
 inline constexpr char Release[] = R"SQL(
 DELETE FROM playerbot_autonomy_operation_lease WHERE operation_id=?
 )SQL";
+inline constexpr char Execution[] = R"SQL(
+INSERT INTO playerbot_autonomy_execution
+ (operation_id,revision,execution_mode,group_id,creation_fenced,succeeded,group_confirmed) VALUES (?,?,?,?,?,?,?)
+ON DUPLICATE KEY UPDATE revision=VALUES(revision),execution_mode=VALUES(execution_mode),
+ group_id=VALUES(group_id),creation_fenced=VALUES(creation_fenced),succeeded=VALUES(succeeded),
+ group_confirmed=VALUES(group_confirmed)
+)SQL";
+// Read-only core evidence. The module never creates/deletes core group SQL.
+inline constexpr char GroupSnapshot[] = R"SQL(
+SELECT g.leaderGuid,m.memberGuid,m.guid FROM (SELECT 1) s LEFT JOIN `groups` g ON g.guid=?
+LEFT JOIN group_member m ON m.memberGuid IN (?,?,?,?,?) ORDER BY m.memberGuid LIMIT 6
+)SQL";
+inline constexpr char GroupAbsent[] = R"SQL(
+SELECT CAST(NOT EXISTS (SELECT 1 FROM `groups` WHERE guid=? OR leaderGuid IN (?,?,?,?,?)) AND
+ NOT EXISTS (SELECT 1 FROM group_member WHERE memberGuid IN (?,?,?,?,?)) AS UNSIGNED)
+)SQL";
 inline constexpr char Load[] = R"SQL(
 SELECT o.*,m.position,m.character_guid,m.account_id,m.guild_id,m.combat_role,
- (SELECT COUNT(*) FROM playerbot_autonomy_operation_lease l WHERE l.operation_id=o.operation_id) lease_count
+ (SELECT COUNT(*) FROM playerbot_autonomy_operation_lease l WHERE l.operation_id=o.operation_id) lease_count,
+ x.schema_version,x.revision,x.execution_mode,x.group_id,x.creation_fenced,x.succeeded,x.group_confirmed
 FROM (SELECT 1) s LEFT JOIN playerbot_autonomy_operation o ON o.operation_id=?
 LEFT JOIN playerbot_autonomy_operation_member m ON m.operation_id=o.operation_id
+LEFT JOIN playerbot_autonomy_execution x ON x.operation_id=o.operation_id
 ORDER BY m.position LIMIT 26
 )SQL";
 inline constexpr char RecoverPage[] = R"SQL(
@@ -49,6 +67,11 @@ SELECT o.operation_id FROM (SELECT 1) s LEFT JOIN
 WHERE EXISTS (SELECT 1 FROM information_schema.table_constraints
  WHERE table_schema=DATABASE() AND table_name='playerbot_autonomy_operation_journal'
  AND constraint_name='chk_autonomy_operation_mutation' AND enforced='YES')
+AND EXISTS (SELECT 1 FROM information_schema.table_constraints
+ WHERE table_schema=DATABASE() AND table_name='playerbot_autonomy_execution'
+ AND constraint_name='chk_autonomy_execution_version' AND enforced='YES')
+AND EXISTS (SELECT 1 FROM playerbot_autonomy_execution
+ WHERE operation_id=0 AND schema_version=1 AND execution_mode=0 AND revision=0)
 )SQL";
 }  // namespace PlayerbotAutonomy::OperationSql
 #endif

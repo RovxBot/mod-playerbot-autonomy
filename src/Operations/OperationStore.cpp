@@ -17,6 +17,9 @@ void OperationConnection::DoPrepareStatements()
     PrepareStatement(OpRelease, OperationSql::Release, CONNECTION_BOTH);
     PrepareStatement(OpLoad, OperationSql::Load, CONNECTION_BOTH);
     PrepareStatement(OpRecoverPage, OperationSql::RecoverPage, CONNECTION_BOTH);
+    PrepareStatement(OpExecution, OperationSql::Execution, CONNECTION_BOTH);
+    PrepareStatement(OpGroupSnapshot, OperationSql::GroupSnapshot, CONNECTION_BOTH);
+    PrepareStatement(OpGroupAbsent, OperationSql::GroupAbsent, CONNECTION_BOTH);
 }
 bool OperationStore::Initialize(std::string const& info)
 {
@@ -39,6 +42,24 @@ QueryCallback OperationStore::RecoverPage(uint64 cursor)
 {
     auto* stmt = Statement(OpRecoverPage);
     stmt->SetData(0, cursor);
+    return AsyncQuery(stmt);
+}
+QueryCallback OperationStore::GroupSnapshot(Operation const& op)
+{
+    auto* stmt = Statement(OpGroupSnapshot);
+    stmt->SetData(0, op.Group);
+    for (uint32 i=0; i<5; ++i) stmt->SetData(i+1, op.Members.at(i).Guid);
+    return AsyncQuery(stmt);
+}
+QueryCallback OperationStore::GroupAbsent(Operation const& op)
+{
+    auto* stmt = Statement(OpGroupAbsent);
+    stmt->SetData(0, op.Group);
+    for (uint32 i=0; i<5; ++i)
+    {
+        stmt->SetData(i+1, op.Members.at(i).Guid);
+        stmt->SetData(i+6, op.Members.at(i).Guid);
+    }
     return AsyncQuery(stmt);
 }
 TransactionCallback OperationStore::Save(Operation const& m, Operation const* before)
@@ -79,6 +100,15 @@ TransactionCallback OperationStore::Save(Operation const& m, Operation const* be
     journal->SetData(2, std::string_view(OperationStateName(m.State)));
     journal->SetData(3, m.Reason);
     transaction->Append(journal);  // CHECK ROW_COUNT=1 also rejects zero-row CAS.
+    auto* execution = Statement(OpExecution);
+    execution->SetData(0, m.Id);
+    execution->SetData(1, m.Revision);
+    execution->SetData(2, uint32(m.Execution));
+    execution->SetData(3, m.Group);
+    execution->SetData(4, uint32(m.CreationFenced));
+    execution->SetData(5, uint32(m.Succeeded));
+    execution->SetData(6, uint32(m.GroupConfirmed));
+    transaction->Append(execution);
     for (uint32 i = 0; i < m.Members.size(); ++i)
     {
         auto const& member = m.Members[i];
@@ -146,6 +176,20 @@ bool OperationStore::Decode(PreparedQueryResult result, Operation& m, uint64& le
     m.Reason = f[12].Get<std::string>();
     // COUNT metadata is binary uint64 in the pinned core decoder.
     leases = f[18].Get<uint64>();
+    if (f[19].IsNull()) return false; // Missing receipt is never simulated success.
+    else
+    {
+        if (f[19].Get<uint32>() != 1 || f[20].Get<uint64>() != m.Revision || f[21].Get<uint32>() > 1 ||
+            f[23].Get<uint32>() > 1 || f[24].Get<uint32>() > 1) return false;
+        m.Execution = ExecutionMode(f[21].Get<uint32>());
+        m.Group = f[22].Get<uint32>();
+        m.CreationFenced = f[23].Get<uint32>() != 0;
+        m.Succeeded = f[24].Get<uint32>() != 0;
+        if (f[25].Get<uint32>() > 1) return false;
+        m.GroupConfirmed = f[25].Get<uint32>() != 0;
+        if (m.GroupConfirmed && !m.Group) return false;
+        if (m.Group && (m.Execution != ExecutionMode::RealGroup || !m.CreationFenced)) return false;
+    }
     do
     {
         f = result->Fetch();

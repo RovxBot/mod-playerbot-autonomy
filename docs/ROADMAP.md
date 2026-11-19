@@ -35,6 +35,12 @@ operator reports four live managed guilds and M1/recruitment/restart acceptance;
 new operation behaviour still needs its own build and live gates.
 
 ## M3 — Five-player dungeon expeditions
+
+The [M3A source candidate](M3A_RELEASE.md) implements normal group assembly and
+an optional trusted start/status/stop consumer. Its deterministic/SQL/header
+checks do not establish a linked server or dungeon completion. Issue #30 tracks
+legitimate travel, entry, exit and binding-safe recovery for the next slice.
+
 - Trusted, narrow opt-in integration contract with mod-dungeon-clear.
 - Formation of existing tank/heal/3 DPS parties; no GM master, free gear or fake loot.
 - Level/gear/access validation, dungeon allowlist, travel/entry, completion and watchdog recovery.

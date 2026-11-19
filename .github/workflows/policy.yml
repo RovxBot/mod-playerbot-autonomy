@@ -66,6 +66,21 @@ jobs:
             tests/OperationTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
             -o /tmp/autonomy-operation-tests
           /tmp/autonomy-operation-tests
+      - name: Test real group executor and core adapter
+        # Real group and core-adapter tests execute production code with fakes;
+        # they neither configure nor build the game server.
+        env:
+          CXX_STANDARD: ${{ matrix.standard }}
+        run: |
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/RealGroupTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
+            -o /tmp/autonomy-real-group-tests
+          /tmp/autonomy-real-group-tests
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Itests/group_fakes -Isrc \
+            tests/CoreGroupPortTests.cpp src/Operations/CoreGroupPort.cpp \
+            src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
+            -o /tmp/autonomy-core-group-tests
+          /tmp/autonomy-core-group-tests
       - name: Test recruitment controller
         env:
           CXX_STANDARD: ${{ matrix.standard }}
@@ -168,6 +183,17 @@ jobs:
             sudo apt-get install -y --no-install-recommends libmysqlclient-dev
           fi
           sudo apt-get install -y --no-install-recommends libboost-dev
+      - name: Checkout matching owner trusted bridge interface
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-dungeon-clear
+          ref: f9201249e287027f0d393da17eb85ef588c49847
+          path: _deps/dungeon-clear
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/Integration/DcAutonomyApi.h
+            src/Integration/DcAutonomyController.h
       - name: Execute production SQL against disposable fixtures
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
@@ -179,7 +205,7 @@ jobs:
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
           AUTONOMY_MYSQL_DATABASE: autonomy_test
-        run: python3 tools/check_prepared_mysql.py --core _deps/core --playerbots _deps/playerbots
+        run: python3 tools/check_prepared_mysql.py --core _deps/core --playerbots _deps/playerbots --dungeon-clear _deps/dungeon-clear
 
   integration-contracts:
     runs-on: ubuntu-latest
@@ -217,7 +243,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-dungeon-clear
-          ref: b1be76d93da4b409daa7a2c9a8f27301e540af4a
+          ref: f9201249e287027f0d393da17eb85ef588c49847
           path: _deps/dungeon-clear
           persist-credentials: false
           sparse-checkout-cone-mode: false

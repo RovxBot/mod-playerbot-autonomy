@@ -180,6 +180,8 @@ int main()
     OperationSettings settings;
     assert(!settings.Enabled && !settings.AssembleGroups && settings.Valid());
     settings.AssembleGroups = true;
+    assert(settings.Valid());
+    settings.Rules.CrossGuild = true;
     assert(!settings.Valid());
     std::cout
         << "PASS roles, exclusions, deterministic party planning, bounded load, atomic M1 leases, lifecycle/cleanup\n";

@@ -19,16 +19,21 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CORE_PIN = "0554bcdd664ff6d85291ca2a10fd31d3e37e89e6"
 PLAYERBOTS_PIN = "696a009ceeeb400cfe40eedcd8a6c9333bdc1b59"
+DC_PIN = "f9201249e287027f0d393da17eb85ef588c49847"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", type=Path, required=True)
     parser.add_argument("--playerbots", type=Path, required=True)
+    parser.add_argument("--dungeon-clear", type=Path)
     parser.add_argument("--mysql-dir", type=Path)
     parser.add_argument("--boost-include", type=Path, default=Path("/usr/include"))
     args = parser.parse_args()
-    for path, pin in ((args.core, CORE_PIN), (args.playerbots, PLAYERBOTS_PIN)):
+    pins = [(args.core, CORE_PIN), (args.playerbots, PLAYERBOTS_PIN)]
+    if args.dungeon_clear:
+        pins.append((args.dungeon_clear, DC_PIN))
+    for path, pin in pins:
         sha = subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip()
         if sha != pin:
             parser.error(f"Expected pinned dependency {pin}, found {sha} at {path}")
@@ -65,6 +70,8 @@ def main():
     includes = [ROOT / "tests/prepared_mysql", ROOT / "tests/runtime_fakes", ROOT / "src",
                 args.playerbots / "src/Bot", args.boost_include, args.core / "deps/fmt/include",
                 args.core / "deps/SFMT", *sorted(headers)]
+    if args.dungeon_clear:
+        includes.append(args.dungeon_clear.resolve() / "src")
     if args.mysql_dir:
         includes.insert(0, args.mysql_dir / "include")
         mysql_flags = [f"-L{args.mysql_dir / 'lib'}", f"-Wl,-rpath,{args.mysql_dir / 'lib'}", "-lmysqlclient"]
@@ -77,6 +84,7 @@ def main():
         sources = [ROOT / "tests/PreparedMySQLTests.cpp", ROOT / "src/Persistence/EnrollmentStore.cpp",
                    ROOT / "src/Operations/OperationStore.cpp", ROOT / "src/Operations/OperationCoordinator.cpp",
                    ROOT / "src/Operations/OperationRuntime.cpp", ROOT / "src/Operations/RosterPlanner.cpp",
+                   ROOT / "src/Operations/CoreGroupPort.cpp",
                    ROOT / "src/Persistence/EnrollmentRuntime.cpp", ROOT / "src/Persistence/EnrollmentTransition.cpp",
                    ROOT / "src/Guild/GuildStore.cpp", ROOT / "src/Guild/GuildDirector.cpp",
                    ROOT / "src/Guild/GuildRuntime.cpp",
@@ -86,7 +94,7 @@ def main():
         command = [os.getenv("CXX", "c++"), "-std=c++20", "-O0", "-g", "-pthread", "-include", "cstring",
                    "-DAUTONOMY_PREPARED_MYSQL", f"-I{build}", *[f"-I{p.resolve()}" for p in includes],
                    *map(str, sources), *mysql_flags, "-o", str(build / "prepared-tests")]
-        print(f"Core {CORE_PIN}; playerbots {PLAYERBOTS_PIN}; C++20 decoder harness", flush=True)
+        print(f"Core {CORE_PIN}; playerbots {PLAYERBOTS_PIN}; DC {DC_PIN if args.dungeon_clear else 'unavailable'}; C++20 decoder harness", flush=True)
         subprocess.run(command, check=True)
         subprocess.run([str(build / "prepared-tests")], check=True)
 

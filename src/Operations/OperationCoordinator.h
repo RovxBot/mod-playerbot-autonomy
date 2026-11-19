@@ -25,6 +25,7 @@ enum class OperationType : std::uint8_t
     Pvp,
     Raid
 };
+enum class ExecutionMode : std::uint8_t { Simulated, RealGroup };
 char const* OperationStateName(OperationState state);
 bool Terminal(OperationState state);
 bool CanTransition(OperationState from, OperationState to);
@@ -34,6 +35,9 @@ struct Operation
     std::uint32_t Guild = 0, Leader = 0, Faction = 2, Attempts = 0;
     OperationType Type = OperationType::DungeonParty;
     OperationState State = OperationState::Proposed;
+    ExecutionMode Execution = ExecutionMode::Simulated;
+    std::uint32_t Group = 0;
+    bool CreationFenced = false, Succeeded = false, GroupConfirmed = false;
     std::vector<RosterMember> Members;
     std::string Reason = "simulated_dungeon_party";
 };
@@ -41,14 +45,16 @@ struct OperationSettings
 {
     bool Enabled = false;
     bool DryRun = true;           // Refresh/plan only; no new operation writes or leases.
-    bool AssembleGroups = false;  // No executor is shipped; true fails closed.
+    bool AssembleGroups = false;
+    bool TrustedDungeon = false, KillSwitch = false;
+    std::uint32_t MaxReal = 1, AssemblySeconds = 90, ProgressSeconds = 600, RunSeconds = 3600;
+    std::uint32_t CooldownSeconds = 300;
     std::uint32_t MaxConcurrent = 1, IntervalMs = 5000, RefreshBudget = 4;
     std::uint32_t LeaseSeconds = 120, TimeoutSeconds = 90;
     RosterRules Rules;
     bool Valid() const;
 };
-// Pure lifecycle decision. ACTIVE is a simulation outcome, never an assertion
-// that a group/instance/executor exists. Future types require separate adapters.
+// Simulation only. Real operations require authoritative executor evidence.
 Operation NextOperation(Operation const& current, std::uint64_t now, bool enabled, bool participantsValid);
 bool SameOperation(Operation const& a, Operation const& b);
 std::vector<std::uint32_t> ParticipantGuids(Operation const& operation);

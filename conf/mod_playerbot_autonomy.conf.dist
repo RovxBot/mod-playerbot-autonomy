@@ -62,14 +62,30 @@ PlayerbotAutonomy.Recruitment.CooldownMs = 15000
 
 # M2 simulated dungeon-party planning. Requires the operations migration even
 # when disabled at next boot, so interrupted intents can be cancelled safely.
-# Existing managed guild ownership and M1 protection are required. No executor,
-# groups, teleports, dungeon entry or rewards are provided by this slice.
+# Existing managed guild ownership and M1 protection are required. M3A also
+# requires the additive execution-receipt migration, including when disabled.
 PlayerbotAutonomy.Operations.Enable = 0
 # Enable=1 with DryRun=1 refreshes read-only capability snapshots/plans only.
 # DryRun=0 explicitly permits durable SIMULATED operations and temporary leases.
 PlayerbotAutonomy.Operations.DryRun = 1
-# Separate future executor gate. Setting 1 currently fails closed with a reason.
+# Real normal-group executor. Requires DryRun=0. Otherwise operations simulate.
+# Only dedicated, persistent managed bots; no existing bindings/difficulty changes.
 PlayerbotAutonomy.Operations.AssembleGroups = 0
+# Optional companion v1 provider; also needs DungeonClear.Autonomy.Enable=1.
+# Utgarde Keep normal only. Already eligible/co-located group; NO travel/entry.
+PlayerbotAutonomy.Operations.TrustedDungeon = 0
+# Independent runtime kill switch. Stops admission and reconciles existing work.
+PlayerbotAutonomy.Operations.KillSwitch = 0
+# Pilot supports exactly one real operation. Invalid values fail closed.
+PlayerbotAutonomy.Operations.MaxReal = 1
+# 30..300 seconds, includes durable assembly and waiting for co-location.
+PlayerbotAutonomy.Operations.AssemblySeconds = 90
+# 30..1800 without actual DC progress; total run limit up to 7200 seconds.
+PlayerbotAutonomy.Operations.ProgressSeconds = 600
+PlayerbotAutonomy.Operations.RunSeconds = 3600
+# No automatic retries of a creation or accepted launch. New operations wait
+# 30..3600 seconds after confirmed cleanup. Pending cleanup retains ownership.
+PlayerbotAutonomy.Operations.CooldownSeconds = 300
 PlayerbotAutonomy.Operations.CrossGuild = 0
 # 1..4 concurrent simulations. At most one SQL action is scheduled per tick.
 PlayerbotAutonomy.Operations.MaxConcurrent = 1

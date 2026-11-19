@@ -16,6 +16,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--core", type=Path, required=True)
     parser.add_argument("--playerbots", type=Path, required=True)
+    parser.add_argument("--dungeon-clear", type=Path)
     parser.add_argument("--boost-include", type=Path, default=Path("/usr/include"))
     parser.add_argument("--mysql-include", type=Path, default=Path("/usr/include/mysql"))
     parser.add_argument("--cxx", default="c++")
@@ -38,6 +39,8 @@ def main() -> int:
         ]
         + headers
     )
+    if args.dungeon_clear:
+        includes.insert(0, args.dungeon_clear.resolve() / "src")
     flags = [f"-std={args.standard}", "-fsyntax-only", "-DMOD_PLAYERBOTS"] + [f"-I{path}" for path in includes]
     files: list[Path] = []
     if args.mode in ("autonomy", "both"):
@@ -51,6 +54,7 @@ def main() -> int:
                 "src/Operations/OperationCoordinator.cpp",
                 "src/Operations/OperationStore.cpp",
                 "src/Operations/OperationRuntime.cpp",
+                "src/Operations/CoreGroupPort.cpp",
                 "src/Guild/GuildDirector.cpp",
                 "src/Guild/GuildNameValidation.cpp",
                 "src/Guild/RecruitmentDirector.cpp",
@@ -61,6 +65,17 @@ def main() -> int:
                 "src/Persistence/EnrollmentTransition.cpp",
             )
         ]
+        if args.dungeon_clear:
+            dc = args.dungeon_clear.resolve() / "src"
+            files += [dc / path for path in (
+                "Integration/DcAutonomyRuntime.cpp",
+                "Ai/Dungeon/DungeonClear/Action/DungeonClearChatActions.cpp",
+                "Ai/Dungeon/DungeonClear/Action/DcActionShared.cpp",
+                "Ai/Dungeon/DungeonClear/Util/DcStrandedRecovery.cpp",
+                "Ai/Dungeon/DungeonClear/Util/DcCombatPurge.cpp",
+                "Ai/Dungeon/DungeonClear/Util/DcRezRecovery.cpp",
+                "Ai/Dungeon/DungeonClear/Util/DcLeaderSignal.cpp",
+                "Ai/Dungeon/DungeonClear/Util/DcBreathProvision.cpp")]
     if args.mode in ("playerbots", "both"):
         files += [
             playerbots / path

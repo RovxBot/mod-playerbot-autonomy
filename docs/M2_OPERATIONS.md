@@ -19,9 +19,12 @@ The current dungeon-clear contract pin remains
 `Operations.Enable=1`, default `Operations.DryRun=1` refreshes capability
 snapshots and computes read-only party templates. Setting `DryRun=0` permits
 **simulated** operations with real durable intents and exclusive leases.
-`Operations.AssembleGroups=1` fails closed (`group_executor_unavailable`):
-there is no game-group executor in this release. No group creation, movement,
-teleport, dungeon entry, dungeon-clear launch, GM harness or rewards are called.
+With `Operations.AssembleGroups=0`, no group creation, movement, teleport,
+dungeon entry, dungeon-clear launch, GM harness or rewards are called.
+The separately gated [M3A executor](M3A_RELEASE.md) now handles
+`Operations.AssembleGroups=1`; enabling it with `DryRun=0` permits real groups.
+The original M2 release had no executor. Read the M3A migration/rollout gates
+before changing this switch.
 Future activity types are represented by the common model; only the five-person
 simulation is accepted by this persistence adapter.
 
@@ -105,7 +108,7 @@ No provider is replaced or weakened, and no extra protection system is installed
 in playerbots. Normal autonomous AI may change activity; fresh validation then
 cancels the simulation. This is not proof of stable live bot-led groups.
 
-Leases never renew and expire after a bounded absolute deadline. Scheduler elapsed
+**Simulated** leases never renew and expire after a bounded absolute deadline. Scheduler elapsed
 time also advances the local clock, so a backward wall-clock correction cannot
 extend a local lease indefinitely. Completion,
 failure and cancellation delete durable leases in the terminal transaction;
@@ -160,8 +163,9 @@ the same harness. Real-header syntax checks include all new adapters.
 
 A later batched worldserver build/link, startup validation, live M2 dry-run and
 simulation acceptance, map/AI/DB baseline measurements and a 24-hour soak remain
-open in #6, #7 and #13. Actual group assembly needs a separately reviewed
-executor, legitimate group APIs, protection of live groups and target-specific
-access checks. M3 additionally needs authorised dungeon-clear integration.
+open in #6, #7 and #13. The [M3A candidate](M3A_RELEASE.md) supplies the separate
+real executor and optional authorised DC integration. Real leases remain held
+beyond admission deadlines while group/executor/SQL cleanup is unconfirmed;
+the simulated expiry/recovery behavior above does not release a real group.
 No image build, production SQL, deployment, restart or automatic merge is
 part of this delivery.

@@ -17,6 +17,13 @@ new default-off planner/coordinator and its separate build/live acceptance gates
 The operator reports the existing four managed guilds, M1 persistence and
 founding/recruitment accepted live; this change does not repeat those pilots.
 
+[M3A source candidate and acceptance report](docs/M3A_RELEASE.md) adds a separate
+default-off normal-group executor and optional trusted dungeon-clear bridge.
+Real operations require core roster/SQL confirmation and executor evidence;
+simulations remain selectable. Travel, entry/exit and automatic binding/restart
+recovery remain follow-up work. No combined server build or real dungeon pilot
+has been performed for this candidate.
+
 ## Vision
 
 Create a populated MMO world with two complementary types of random playerbots:
