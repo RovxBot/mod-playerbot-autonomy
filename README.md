@@ -12,6 +12,11 @@ default-off director and its separate release gates.
 [Curated guild naming](docs/GUILD_NAMES.md) documents the exact 46-name pool,
 core validation/rejections and immutable names for existing founding intents.
 
+[M2 roster planning and simulated operations](docs/M2_OPERATIONS.md) describes the
+new default-off planner/coordinator and its separate build/live acceptance gates.
+The operator reports the existing four managed guilds, M1 persistence and
+founding/recruitment accepted live; this change does not repeat those pilots.
+
 ## Vision
 
 Create a populated MMO world with two complementary types of random playerbots:

@@ -29,6 +29,11 @@ STAGE/guild/CONFIRM integration. Their full-server acceptance is still pending.
 - No real-player recruitment or human-guild governance by default.
 - **Exit:** existing bot guild grows without hijacking players, guilded members persist and leases survive/recover from crashes.
 
+The [M2 planner/coordinator candidate](M2_OPERATIONS.md) adds bounded roster
+evidence, deterministic party templates and durable simulated operations. The
+operator reports four live managed guilds and M1/recruitment/restart acceptance;
+new operation behaviour still needs its own build and live gates.
+
 ## M3 — Five-player dungeon expeditions
 - Trusted, narrow opt-in integration contract with mod-dungeon-clear.
 - Formation of existing tank/heal/3 DPS parties; no GM master, free gear or fake loot.

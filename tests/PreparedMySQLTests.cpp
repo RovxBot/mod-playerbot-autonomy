@@ -680,6 +680,7 @@ void TestNameStore(GuildStore& store)
     assert(Scalar(store,"SELECT COUNT(*) FROM playerbot_autonomy_guild_audit") == 44);
     std::cout << "PASS 44 core-fixture-valid names binary store roundtrip/restart, Unicode unchanged, case collision rollback\n";
 }
+#include "OperationPreparedTests.h"
 int main()
 {
     std::cout << std::unitbuf;
@@ -692,6 +693,7 @@ int main()
     TestRecovery(guilds, enrollment);
     TestLoginChurn(enrollment);
     TestNameStore(guilds);
+    TestOperations(guilds, enrollment);
     assert(Scalar(enrollment, "SELECT COUNT(*) FROM characters WHERE level<>41 OR money<>12345") == 0);
     std::cout << "PASS character progression unchanged; no worldserver build/link/startup\n";
 }

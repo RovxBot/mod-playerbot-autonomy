@@ -59,3 +59,34 @@ PlayerbotAutonomy.Recruitment.DryRun = 1
 # 1000..86400000 ms between requests, including a fresh delay after restart/reload.
 # Candidate budget and scheduler interval inherit GuildDirector settings.
 PlayerbotAutonomy.Recruitment.CooldownMs = 15000
+
+# M2 simulated dungeon-party planning. Requires the operations migration even
+# when disabled at next boot, so interrupted intents can be cancelled safely.
+# Existing managed guild ownership and M1 protection are required. No executor,
+# groups, teleports, dungeon entry or rewards are provided by this slice.
+PlayerbotAutonomy.Operations.Enable = 0
+# Enable=1 with DryRun=1 refreshes read-only capability snapshots/plans only.
+# DryRun=0 explicitly permits durable SIMULATED operations and temporary leases.
+PlayerbotAutonomy.Operations.DryRun = 1
+# Separate future executor gate. Setting 1 currently fails closed with a reason.
+PlayerbotAutonomy.Operations.AssembleGroups = 0
+PlayerbotAutonomy.Operations.CrossGuild = 0
+# 1..4 concurrent simulations. At most one SQL action is scheduled per tick.
+PlayerbotAutonomy.Operations.MaxConcurrent = 1
+# 1000..60000 ms between planning/state decisions; one bounded decision per pass.
+PlayerbotAutonomy.Operations.IntervalMs = 5000
+# 1..16 character capability refreshes per second; managed guilds only.
+PlayerbotAutonomy.Operations.RefreshPerSecond = 4
+# Fixed leases are never renewed. 30..600 timeout; timeout < lease <= 900.
+PlayerbotAutonomy.Operations.TimeoutSeconds = 90
+PlayerbotAutonomy.Operations.LeaseSeconds = 120
+# Conservative generic party template. Item level is the existing playerbots
+# equipped average; this does not establish target dungeon access or lockouts.
+PlayerbotAutonomy.Operations.MinLevel = 15
+PlayerbotAutonomy.Operations.MaxLevel = 80
+PlayerbotAutonomy.Operations.LevelSpread = 5
+PlayerbotAutonomy.Operations.MinItemLevel = 1
+# Evidence older than 5..300 seconds is rejected. Raise refresh throughput before
+# raising this bound. At most 512 members cached; capacity overflow fails closed.
+PlayerbotAutonomy.Operations.MaxSnapshotAgeSeconds = 30
+PlayerbotAutonomy.Operations.MaxCandidates = 512
