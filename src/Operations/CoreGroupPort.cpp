@@ -7,6 +7,7 @@
 #include "GroupMgr.h"
 #include "GroupScript.h"
 #include "InstanceSaveMgr.h"
+#include "Item.h"
 #include "LFGMgr.h"
 #include "Map.h"
 #include "MapMgr.h"
@@ -63,6 +64,9 @@ public:
         if (!DcAutonomy::PilotEligible(*profile, _realmExpansion, p->GetLevel(),
                                        GET_PLAYERBOT_AI(p)->GetEquipGearScore(p)))
             return "pilot_level_or_equipment_ineligible";
+        if (!DcAutonomy::PilotEquipmentReady(p, INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND,
+                                             EQUIPMENT_SLOT_START, EQUIPMENT_SLOT_END))
+            return "pilot_equipment_missing_or_broken";
         // Calls the core's normal access policy, including script hooks and
         // progression requirements. It grants no missing access requirement.
         if (sMapMgr->PlayerCannotEnter(profile->map, p, true) != Map::CAN_ENTER)

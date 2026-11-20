@@ -1,6 +1,7 @@
 #ifndef AUTONOMY_GROUP_ENGINE_FAKES_H
 #define AUTONOMY_GROUP_ENGINE_FAKES_H
 #include <cstdint>
+#include <array>
 #include <map>
 #include <vector>
 using uint8 = std::uint8_t;
@@ -74,6 +75,13 @@ struct Map
 };
 struct Player
 {
+    struct Item
+    {
+        bool Present = true, Broken = false;
+        bool IsBroken() const { return Broken; }
+    };
+    std::array<Item, 19> Equipment;
+    Item* GetItemByPos(uint8, uint8 slot) { return Equipment.at(slot).Present ? &Equipment.at(slot) : nullptr; }
     uint32 Id = 0, Guild = 23, Team = 0, Level = 80, MapId = 0, InstanceId = 0;
     bool Human = false, Self = false, Gm = false, HasAI = true, World = true, Alive = true;
     bool Combat = false, Teleport = false, Flight = false, Bg = false, Arena = false, Queue = false, Bound = false;
@@ -107,6 +115,8 @@ struct Player
     Difficulty GetDungeonDifficulty() const { return DungeonDifficulty; }
     Difficulty GetRaidDifficulty() const { return RaidDifficulty; }
 };
+inline constexpr uint8 INVENTORY_SLOT_BAG_0 = 255, EQUIPMENT_SLOT_MAINHAND = 15;
+inline constexpr uint8 EQUIPMENT_SLOT_START = 0, EQUIPMENT_SLOT_END = 19;
 inline std::map<uint32, Player> Players;
 #define GET_PLAYERBOT_AI(p) ((p) && (p)->HasAI ? &(p)->AI : nullptr)
 inline bool IsRealPlayer(Player* p) { return p->Human; }

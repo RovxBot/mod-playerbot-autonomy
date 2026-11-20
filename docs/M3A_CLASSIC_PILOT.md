@@ -5,11 +5,17 @@ It is not a real dungeon clear or production acceptance. Issue #9 remains open;
 travel, entrance/exit automation and binding-safe recovery stay in #30 (M3B).
 M1 enrollment/progression protection and the four managed guilds are unchanged.
 
+**Review correction:** the [M3B prerequisite audit](M3B_RFC_PREREQUISITE.md)
+verified the ordinary portal APIs but found no complete lease-preserving logout
+recovery or reviewed normal-binding cleanup. Real entry/exit remains blocked;
+do not enable the pilot until a separately reviewed recovery slice closes these
+gates. The runbook below is conditional, not an instruction to execute it now.
+
 ## Compatible source set
 
 | Component | Exact validation revision |
 | --- | --- |
-| [Dungeon-clear v2 provider PR](https://github.com/RovxBot/mod-dungeon-clear/pull/11) | `fad8a7691197f5be922f00d6cd2d3430e68dc48c` |
+| [Dungeon-clear v2 provider PR](https://github.com/RovxBot/mod-dungeon-clear/pull/11) | `a6627e6ad05445737090b41618346088e8637e1d` |
 | Playerbots (no patch) | `696a009ceeeb400cfe40eedcd8a6c9333bdc1b59` |
 | Existing core test-staging header snapshot (read-only) | `0554bcdd664ff6d85291ca2a10fd31d3e37e89e6` |
 | Autonomy consumer base | `a5630a66956448fad0e44ac969673eafeac2f817` (use the immutable head recorded on this PR) |
@@ -31,6 +37,10 @@ must be within Classic level 60 or TBC level 70; a Wrath cap is refused even if
 configured. These are conservative admission floors, not encounter balance
 measurements. Existing equipment/spec/role freshness and main-hand/broken-item
 checks still apply. Generic configured bounds may further restrict the roster.
+The main-hand and broken-item predicate is now shared by pre-group admission,
+each follower addition and provider launch, with deterministic zero-mutation
+tests. Neither expansion setting detects realm progression: each is an
+operator-supplied ceiling, independent of normal core/script access checks.
 
 Planning, actual core admission, each follower addition, owner validation and
 provider validation consume the profile. No UT/level-70/item-level-115 constants
@@ -40,7 +50,7 @@ Normal `PlayerCannotEnter` checks include script hooks, progression requirements
 and instance count. No attunements, keys, gear, XP, currency, loot, skills or
 levels are granted and no access data is edited.
 
-The [provider audit](https://github.com/RovxBot/mod-dungeon-clear/blob/fad8a7691197f5be922f00d6cd2d3430e68dc48c/AUTONOMY_CLASSIC.md)
+The [provider audit](https://github.com/RovxBot/mod-dungeon-clear/blob/a6627e6ad05445737090b41618346088e8637e1d/AUTONOMY_CLASSIC.md)
 records the actual source. Four kill-credit definitions match normal static
 spawns: Oggleflint (430/11517), Taragaman (431/11520), Jergosh (432/11518),
 Bazzalan (433/11519). DC discovers these through its existing DBC/SQL/spawn
@@ -79,6 +89,11 @@ is needed here. Preserve all M1/M2/execution tables and receipts.
    or provision a replacement to make the plan pass. Use one tank, one healer,
    three DPS, all dedicated persistent bots with no human master, queues,
    invite, old group or instance binding. If no eligible five exist, stop.
+   Classify this **one** operation before running it: a naturally higher-level
+   party supplies integration smoke evidence only. At-level combat acceptance
+   needs an already eligible approximately level-15–20 party and actual normal
+   combat/XP/loot evidence. Never downlevel or provision characters. Do not
+   infer at-level acceptance from the configured maximum level or item floor.
 2. Take read-only before snapshots of each character's level/XP, money,
    gear/durability/inventory, talents/skills/professions, quest and achievement
    state. Record current guild membership and enrollment. Preserve these
@@ -159,7 +174,9 @@ after startup; their unchanged source authorization is not gameplay evidence.
 
 ## Verification record
 
-The [verification record](M3A_CLASSIC_EVIDENCE.md) records the final commands/results: all autonomy standalone suites and
+The [review correction record](M3A_CLASSIC_REVIEW_EVIDENCE.md) records the current
+pin, passing inexpensive checks and remote Actions limitation. The
+[original verification record](M3A_CLASSIC_EVIDENCE.md) records the prior commands/results: all autonomy standalone suites and
 the provider controller/authorization/actual encounter-adapter bodies under
 C++17/C++20; Python SQL tests and binary production-store/controller harnesses
 on disposable MySQL; pinned core header syntax and source contracts. Engine

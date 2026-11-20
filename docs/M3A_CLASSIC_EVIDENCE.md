@@ -1,5 +1,10 @@
 # Classic pilot verification — 20 November 2026
 
+The [review correction evidence](M3A_CLASSIC_REVIEW_EVIDENCE.md) supersedes the
+provider pin below for new builds and records shared equipment admission,
+failure containment, the remote Actions blocker and the blocked M3B prerequisite.
+The results below remain the historical pre-correction record.
+
 Source candidate only. The exact compatible dependencies and live acceptance
 runbook are in [M3A_CLASSIC_PILOT.md](M3A_CLASSIC_PILOT.md). The autonomy PR records
 its immutable consumer head. Provider pin:

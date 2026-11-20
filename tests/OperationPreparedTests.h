@@ -64,6 +64,7 @@ struct RuntimeGroupFake final : GroupPort
 struct RuntimeDungeonFake final : DcAutonomy::Port
 {
     unsigned Starts = 0, Stops = 0;
+    bool WrongInstance = false;
     DcAutonomy::State State = DcAutonomy::State::Running;
     DcAutonomy::Permit Started;
     bool OnWorldThread() const override { return true; }
@@ -74,6 +75,7 @@ struct RuntimeDungeonFake final : DcAutonomy::Port
     DcAutonomy::Status Observe(DcAutonomy::Permit const& p) override
     {
         auto s = DcAutonomy::Controller::Identity(p); s.state = State; s.lastProgress = OperationClock;
+        if (WrongInstance) ++s.instance;
         s.encounters = 15; s.requiredEncounters = 15;
         s.reason = "injected_engine_evidence"; return s;
     }
@@ -397,6 +399,92 @@ void TestOperations(GuildStore& guildStore, EnrollmentStore& enrollment)
         }
 
 #if AUTONOMY_DC_BRIDGE
+        // Containment of entry failures by the EXISTING runtime. There is no
+        // portal controller here: map/instance/exit evidence is injected.
+        for (unsigned scenario = 0; scenario < 4; ++scenario)
+        {
+            RuntimeDungeonFake dungeon;
+            DcAutonomy::Controller provider(dungeon);
+            RuntimeBridgeController = &provider;
+            assert(DcAutonomy::RegisterExecutor(&RuntimeBridgeExecutor));
+            RuntimeGroupFake entry; entry.Database = &store;
+            OperationRuntime guarded(ReadOperationClock, &entry);
+            auto scoped = realSettings; scoped.Enabled = true;
+            guarded.Configure(scoped); guarded.Start("disposable");
+            auto entryTick = [&]
+            {
+                ++OperationClock; Runtime().Update(1000); Guilds().Update(1000); guarded.Update(1000);
+            };
+            for (unsigned n = 0; n < 240 && (guarded.Operations().empty() ||
+                 !guarded.Operations().begin()->second.GroupConfirmed); ++n) entryTick();
+            assert(guarded.Operations().size() == 1 && entry.Creates == 1);
+            auto held = guarded.Operations().begin()->second;
+            assert(held.GroupConfirmed && held.State == OperationState::Assembling && !dungeon.Starts);
+            entry.Group.SafeToDisband = false;
+            // 0: portal denied/no member entered, 1: partial entry/separated
+            // members (CoreGroupPort collapses colocation to map/instance 0),
+            // 2: cancellation during entry, 3: executor instance mismatch.
+            if (scenario == 3)
+            {
+                entry.Group.Map = 389; entry.Group.Instance = 88;
+                for (unsigned n = 0; n < 40 && !dungeon.Starts; ++n) entryTick();
+                assert(dungeon.Starts == 1);
+                dungeon.WrongInstance = true;
+            }
+            else
+            {
+                entry.Group.Map = entry.Group.Instance = 0;
+                if (scenario == 2)
+                {
+                    scoped.KillSwitch = true;
+                    guarded.Configure(scoped);
+                }
+                else
+                    OperationClock = held.CreatedAt + scoped.AssemblySeconds;
+            }
+            for (unsigned n = 0; n < 40; ++n) entryTick();
+            assert(guarded.Operations().size() == 1);
+            auto closing = guarded.Operations().begin()->second;
+            assert(closing.State == OperationState::Closing && !closing.Succeeded && !entry.Disbands);
+            assert(dungeon.Starts == (scenario == 3 ? 1u : 0u));
+            assert(dungeon.Stops == (scenario == 3 ? 1u : 0u));
+            auto status = guarded.Diagnose(0);
+            auto reason = scenario <= 1 ? "real_assembly_or_colocation_timeout" : scenario == 2 ?
+                "real_feature_disabled" : "executor_observation_identity_mismatch";
+            assert(status.find(reason) != std::string::npos);
+            // Cleanup can take longer than the activity deadline. No expiry,
+            // cancellation, master switch or login allowance releases ownership.
+            scoped.Enabled = false; guarded.Configure(scoped);
+            OperationClock = std::max(OperationClock, held.LeaseUntil + 100);
+            for (unsigned n = 0; n < 20; ++n) entryTick();
+            assert(Scalar(store, "SELECT COUNT(*) FROM playerbot_autonomy_operation_lease") == 5);
+            for (auto guid : ParticipantGuids(held))
+            {
+                assert(Runtime().Cache().OperationOwner(guid) == held.Id);
+                Runtime().Cache().AllowLogin(guid); // Enrollment handoff cannot bypass an operation lease.
+                assert(Runtime().Cache().ShouldBlock(guid) && Runtime().Cache().LoginBlocked(guid));
+                assert(!Runtime().Cache().AcquireOperation(held.Id + 1, {guid}));
+            }
+            // Authoritative ordinary recovery/exit is a test input, NOT an
+            // action performed by this candidate. Durable absence is required.
+            entry.Group.SafeToDisband = true;
+            entry.Group.Map = entry.Group.Instance = 0;
+            entry.DelayDeletionSQL = true;
+            for (unsigned n = 0; n < 40; ++n) entryTick();
+            assert(entry.Disbands == 1 && !guarded.Operations().empty());
+            assert(Scalar(store, "SELECT COUNT(*) FROM playerbot_autonomy_operation_lease") == 5);
+            entry.FlushCoreWrites(); entry.DelayDeletionSQL = false;
+            for (unsigned n = 0; n < 80 && !guarded.Operations().empty(); ++n) entryTick();
+            assert(guarded.Operations().empty() && entry.Disbands == 1);
+            assert(Scalar(store, "SELECT COUNT(*) FROM playerbot_autonomy_operation_lease") == 0);
+            for (auto guid : ParticipantGuids(held))
+                assert(!Runtime().Cache().OperationOwner(guid) && Runtime().Cache().ShouldBlock(guid));
+            guarded.Stop(); RuntimeBridgeController = nullptr;
+        }
+        std::cout << "PASS entry failure containment with actual SQL/controllers: failed portal/separated wait "
+                     "timeout, cancellation, instance mismatch, exclusive leases past expiry, M1 retained, "
+                     "SQL-confirmed cleanup; entry/recovery/exit evidence is injected, no movement executed\n";
+
         // Both actual modules' production controllers and real SQL interact;
         // their engine ports inject group/instance/run evidence explicitly.
         {

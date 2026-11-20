@@ -81,6 +81,7 @@ PlayerbotAutonomy.Operations.PilotProfile = 0
 PlayerbotAutonomy.Operations.PilotGuild = 0
 # Additional conservative progression ceiling: 0 Classic, 1 TBC. Higher values
 # are refused for real groups. Must match DungeonClear.Autonomy.MaxExpansion.
+# Operator-supplied bound; does not discover the realm's progression state.
 # Normal core/script access rules still apply. Never unlocks content.
 PlayerbotAutonomy.Operations.RealmMaxExpansion = 0
 # Independent runtime kill switch. Stops admission and reconciles existing work.
