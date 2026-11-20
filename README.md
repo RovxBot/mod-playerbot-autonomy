@@ -24,6 +24,18 @@ simulations remain selectable. Travel, entry/exit and automatic binding/restart
 recovery remain follow-up work. No combined server build or real dungeon pilot
 has been performed for this candidate.
 
+[Classic RFC profile and operator runbook](docs/M3A_CLASSIC_PILOT.md) supersedes
+the original Utgarde Keep target. The default-off v2 bridge allows only normal
+Ragefire Chasm, validates four actual encounter definitions and enforces a
+Classic/TBC progression ceiling. One existing managed guild must be selected;
+no character or guild progression is provisioned.
+
+The [Classic review corrections and M3B prerequisite](docs/M3B_RFC_PREREQUISITE.md)
+record the shared live equipment checks and the verified portal/recovery audit.
+M3B entry/exit remains blocked on leased-member login and normal-bind cleanup;
+no movement implementation or combined build/live acceptance is claimed.
+Expansion ceilings are operator inputs and do not detect realm progression.
+
 ## Vision
 
 Create a populated MMO world with two complementary types of random playerbots:

@@ -180,7 +180,19 @@ int main()
     OperationSettings settings;
     assert(!settings.Enabled && !settings.AssembleGroups && settings.Valid());
     settings.AssembleGroups = true;
+    assert(!settings.Valid());
+    settings.PilotProfile = 1;
+    assert(!settings.Valid());
+    settings.PilotGuild = 23;
     assert(settings.Valid());
+    settings.RealmMaxExpansion = 1;
+    assert(settings.Valid());
+    settings.RealmMaxExpansion = 2;
+    assert(!settings.Valid());
+    settings.RealmMaxExpansion = 1;
+    settings.PilotProfile = 574;
+    assert(!settings.Valid());
+    settings.PilotProfile = 1;
     settings.Rules.CrossGuild = true;
     assert(!settings.Valid());
     std::cout

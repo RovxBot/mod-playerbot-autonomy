@@ -52,6 +52,7 @@ void OperationRuntime::Configure(OperationSettings settings)
         _settings.Enabled = false;
         _decision = "core_group_adapter_unavailable";
     }
+    Groups().ConfigurePilot(settings.PilotProfile, settings.RealmMaxExpansion);
     _planIn = _refreshIn = 0;
     if (!_settings.Enabled)
     {
@@ -226,6 +227,13 @@ void OperationRuntime::Refresh()
 }
 PartyPlan OperationRuntime::Plan(uint32 guild) const
 {
+    if (_settings.AssembleGroups && guild != _settings.PilotGuild)
+    {
+        PartyPlan outside;
+        outside.Guild = guild;
+        outside.Reason = "outside_pilot_guild";
+        return outside;
+    }
     if (!_completeGuilds.count(guild))
     {
         PartyPlan incomplete;
@@ -250,8 +258,23 @@ PartyPlan OperationRuntime::Plan(uint32 guild) const
     auto rules = _settings.Rules;
     if (_settings.AssembleGroups)
     {
-        rules.MinLevel = std::max(rules.MinLevel, 70u);
-        rules.MinItemLevel = std::max(rules.MinItemLevel, 115u);
+#if AUTONOMY_DC_BRIDGE
+        auto const* profile = DcAutonomy::FindPilot(DcAutonomy::PilotVersion, _settings.PilotProfile);
+        if (profile && DcAutonomy::PilotAllowed(profile->version, profile->id, profile->map,
+                                               profile->difficulty, _settings.RealmMaxExpansion))
+        {
+            rules.MinLevel = std::max(rules.MinLevel, profile->minLevel);
+            rules.MaxLevel = std::min(rules.MaxLevel, DcAutonomy::PilotMaxLevel(_settings.RealmMaxExpansion));
+            rules.MinItemLevel = std::max(rules.MinItemLevel, profile->minItemLevel);
+        }
+        else
+#endif
+        {
+            PartyPlan unavailable;
+            unavailable.Guild = guild;
+            unavailable.Reason = "dungeon_profile_provider_unavailable_or_invalid";
+            return unavailable;
+        }
     }
     return PlanParty(candidates, rules, guild, faction, _now);
 }
@@ -276,6 +299,8 @@ bool OperationRuntime::ManagedGuilds(Operation const& operation, bool stopping) 
 }
 bool OperationRuntime::Validate(Operation const& operation, bool requireLease) const
 {
+    if (operation.Execution == ExecutionMode::RealGroup && operation.Guild != _settings.PilotGuild)
+        return false;
     if (!ManagedGuilds(operation)) return false;
     uint32 low = 80, high = 0;
     bool owned = false;
@@ -295,8 +320,17 @@ bool OperationRuntime::Validate(Operation const& operation, bool requireLease) c
             m.Grouped = m.InInstance = false;
             m.Online = m.Available = true;
         }
-        if (operation.Execution == ExecutionMode::RealGroup && (m.Level < 70 || m.EquippedItemLevel < 115))
+        if (operation.Execution == ExecutionMode::RealGroup)
+        {
+#if AUTONOMY_DC_BRIDGE
+            auto const* profile = DcAutonomy::FindPilot(DcAutonomy::PilotVersion, _settings.PilotProfile);
+            if (!profile || !DcAutonomy::PilotEligible(*profile, _settings.RealmMaxExpansion,
+                                                       m.Level, m.EquippedItemLevel))
+                return false;
+#else
             return false;
+#endif
+        }
         if (!RosterRejection(m, _settings.Rules, operation.Guild, operation.Faction, _now, operation.Id).empty() ||
             m.Account != member.Account || m.Role != member.Role || m.Reservation != (requireLease ? operation.Id : 0))
             return false;
@@ -504,6 +538,10 @@ bool OperationRuntime::Authorize(DcAutonomy::Permit const& p, bool consume)
         _settings.KillSwitch || !_operations.count(p.operation))
         return false;
     auto const& op = _operations.at(p.operation);
+    if (p.profileVersion != DcAutonomy::PilotVersion || p.profile != _settings.PilotProfile ||
+        p.realmExpansion != _settings.RealmMaxExpansion ||
+        !DcAutonomy::PilotAllowed(p.profileVersion, p.profile, p.map, p.difficulty, p.realmExpansion))
+        return false;
     if (op.Execution != ExecutionMode::RealGroup || !op.GroupConfirmed || op.Group != p.group ||
         op.Leader != p.leader || Terminal(op.State) || op.State == OperationState::Closing ||
         op.State == OperationState::Recovering || _now >= op.Deadline || _now >= op.LeaseUntil || !Validate(op))
@@ -544,7 +582,7 @@ Operation OperationRuntime::CloseReal(Operation const& current)
         auto* bridge = DcAutonomy::GetExecutor();
         if (bridge)
             _lastDungeonStatus = bridge->stop(*_permit);
-        if (!bridge || !_lastDungeonStatus.quiescent)
+        if (!bridge || !DcAutonomy::Matches(_lastDungeonStatus, *_permit) || !_lastDungeonStatus.quiescent)
         {
             _decision = "cleanup_pending_dungeon_executor_stop";
             return next;
@@ -669,11 +707,15 @@ Operation OperationRuntime::AdvanceReal(Operation const& current, bool recoverin
                     _decision = "trusted_dungeon_disabled_group_ready";
                 else if (!bridge)
                     _decision = "dungeon_adapter_unavailable";
-                else if (group.Map == 574 && group.Instance)
+                else if (auto const* profile = DcAutonomy::FindPilot(DcAutonomy::PilotVersion, _settings.PilotProfile);
+                         profile && group.Map == profile->map && group.Instance)
                 {
                     if (!_permit || _permit->operation != current.Id || (!_permitConsumed && _now >= _permit->expires))
                     {
                         DcAutonomy::Permit p;
+                        p.profileVersion = profile->version;
+                        p.profile = profile->id;
+                        p.realmExpansion = _settings.RealmMaxExpansion;
                         p.owner = _providerIdentity;
                         p.operation = current.Id;
                         p.revision = current.Revision;
@@ -683,7 +725,8 @@ Operation OperationRuntime::AdvanceReal(Operation const& current, bool recoverin
                         p.expires = _now + 10;
                         p.group = current.Group;
                         p.leader = current.Leader;
-                        p.map = 574;
+                        p.map = profile->map;
+                        p.difficulty = profile->difficulty;
                         p.instance = group.Instance;
                         auto guids = ParticipantGuids(current);
                         std::copy(guids.begin(), guids.end(), p.members.begin());
@@ -695,7 +738,9 @@ Operation OperationRuntime::AdvanceReal(Operation const& current, bool recoverin
                     auto status = _permitConsumed ? bridge->status(*_permit) : bridge->start(*_permit);
                     _lastDungeonStatus = status;
                     _decision = status.reason;
-                    if (status.state == DcAutonomy::State::Running || status.state == DcAutonomy::State::Paused)
+                    if (!DcAutonomy::Matches(status, *_permit))
+                        change(OperationState::Closing, "dungeon_executor_identity_mismatch");
+                    else if (status.state == DcAutonomy::State::Running || status.state == DcAutonomy::State::Paused)
                         change(OperationState::Active, "trusted_dungeon_start_acknowledged");
                     else if (_permitConsumed)
                         change(OperationState::Closing, "trusted_dungeon_start_failed");
@@ -719,10 +764,14 @@ Operation OperationRuntime::AdvanceReal(Operation const& current, bool recoverin
             auto status = bridge->status(*_permit);
             _lastDungeonStatus = status;
             _decision = status.reason;
-            if (DcAutonomy::Terminal(status.state))
+            if (!DcAutonomy::Matches(status, *_permit))
+                change(OperationState::Closing, "dungeon_executor_identity_mismatch");
+            else if (DcAutonomy::Terminal(status.state))
             {
-                next.Succeeded = status.state == DcAutonomy::State::Completed;
-                change(OperationState::Closing, status.reason);
+                next.Succeeded = status.state == DcAutonomy::State::Completed &&
+                    DcAutonomy::PilotCompleted(true, status.encounters, status.requiredEncounters);
+                change(OperationState::Closing, status.state == DcAutonomy::State::Completed && !next.Succeeded ?
+                    "dungeon_completion_evidence_rejected" : status.reason);
             }
             else if (!status.lastProgress ||
                      (_now >= status.lastProgress && _now - status.lastProgress >= _settings.ProgressSeconds))
@@ -932,6 +981,8 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
         << " writes=" << _writes << " failures=" << _failures << " lease_conflicts=" << _conflicts
         << " group_checks=" << _groupCalls << " real_gate=" << _settings.AssembleGroups
         << " trusted_gate=" << _settings.TrustedDungeon << " kill_switch=" << _settings.KillSwitch
+        << " pilot_profile=" << _settings.PilotProfile << " pilot_guild=" << _settings.PilotGuild
+        << " realm_max_expansion=" << _settings.RealmMaxExpansion
         << " last_real_id=" << _lastRealOperation << " last_real_reason=" << _lastRealReason
         << " recoveries=" << _recoveries << " ticks=" << _ticks << " last_tick_us=" << _lastTickUs
         << " max_tick_us=" << _maxTickUs << " decision=" << _decision;
@@ -959,6 +1010,8 @@ std::string OperationRuntime::Diagnose(uint32 guild) const
     out << " dc_state=" << DcAutonomy::StateName(_lastDungeonStatus.state)
         << " dc_operation=" << _lastDungeonStatus.operation << " dc_run=" << _lastDungeonStatus.run
         << " dc_map=" << _lastDungeonStatus.map << " dc_instance=" << _lastDungeonStatus.instance
+        << " dc_encounters=" << _lastDungeonStatus.encounters
+        << " dc_required_encounters=" << _lastDungeonStatus.requiredEncounters
         << " dc_quiescent=" << _lastDungeonStatus.quiescent << " dc_reason=" << _lastDungeonStatus.reason;
 #endif
     if (guild)

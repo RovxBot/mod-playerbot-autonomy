@@ -1,5 +1,9 @@
 # M3A source candidate — 19 November 2026
 
+Historical UK candidate: the [Classic RFC profile and runbook](M3A_CLASSIC_PILOT.md)
+supersedes its target, v1 bridge and corresponding dependency pins. Evidence
+below describes that earlier source set; it does not validate the Classic pilot.
+
 This is review/build preparation, **not production acceptance or an autonomous
 dungeon clear**. The accepted M1/four-guild baseline is unchanged. No realm
 build, deployment, restart, production migration, character/guild mutation or
