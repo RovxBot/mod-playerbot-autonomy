@@ -243,7 +243,12 @@ inline Sidecar Cloud;
 struct MapManager
 {
     bool Allowed = true;
-    Map::EnterState PlayerCannotEnter(uint32, Player*, bool) { return Allowed ? Map::CAN_ENTER : Map::DENIED; }
+    uint32 LastMap = 0;
+    Map::EnterState PlayerCannotEnter(uint32 map, Player*, bool)
+    {
+        LastMap = map;
+        return Allowed && map == 389 ? Map::CAN_ENTER : Map::DENIED;
+    }
 };
 inline MapManager Maps;
 #define sMapMgr (&Maps)

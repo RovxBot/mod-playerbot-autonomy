@@ -47,6 +47,7 @@ struct OperationSettings
     bool DryRun = true;           // Refresh/plan only; no new operation writes or leases.
     bool AssembleGroups = false;
     bool TrustedDungeon = false, KillSwitch = false;
+    std::uint32_t PilotProfile = 0, PilotGuild = 0, RealmMaxExpansion = 0;
     std::uint32_t MaxReal = 1, AssemblySeconds = 90, ProgressSeconds = 600, RunSeconds = 3600;
     std::uint32_t CooldownSeconds = 300;
     std::uint32_t MaxConcurrent = 1, IntervalMs = 5000, RefreshBudget = 4;

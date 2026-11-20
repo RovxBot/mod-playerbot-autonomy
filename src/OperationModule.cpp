@@ -38,6 +38,9 @@ private:
                     sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.Enable", false);
         s.AssembleGroups = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.AssembleGroups", false);
         s.TrustedDungeon = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.TrustedDungeon", false);
+        s.PilotProfile = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.PilotProfile", 0);
+        s.PilotGuild = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.PilotGuild", 0);
+        s.RealmMaxExpansion = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.RealmMaxExpansion", 0);
         s.KillSwitch = sConfigMgr->GetOption<bool>("PlayerbotAutonomy.Operations.KillSwitch", false);
         s.MaxReal = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.MaxReal", 1);
         s.AssemblySeconds = sConfigMgr->GetOption<uint32>("PlayerbotAutonomy.Operations.AssemblySeconds", 90);

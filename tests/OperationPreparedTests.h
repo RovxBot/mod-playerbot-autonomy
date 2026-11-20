@@ -35,7 +35,7 @@ struct RuntimeGroupFake final : GroupPort
     uint32 Create(uint32 leader) override
     {
         ++Creates; Group.Id = 991; Group.Leader = leader; Group.Members = {leader};
-        if (Colocated) { Group.Map = 574; Group.Instance = 88; }
+        if (Colocated) { Group.Map = 389; Group.Instance = 88; }
         Group.Normal = Group.SafeControl = Group.SafeToDisband = true; Ungrouped = false;
         if (Database)
         {
@@ -74,6 +74,7 @@ struct RuntimeDungeonFake final : DcAutonomy::Port
     DcAutonomy::Status Observe(DcAutonomy::Permit const& p) override
     {
         auto s = DcAutonomy::Controller::Identity(p); s.state = State; s.lastProgress = OperationClock;
+        s.encounters = 15; s.requiredEncounters = 15;
         s.reason = "injected_engine_evidence"; return s;
     }
     bool Teardown(DcAutonomy::Permit const&) override { ++Stops; return true; }
@@ -324,14 +325,17 @@ void TestOperations(GuildStore& guildStore, EnrollmentStore& enrollment)
         assert(Scalar(store, "SELECT COUNT(*) FROM playerbot_autonomy_operation_lease") == 0);
         missing.Stop();
     }
+#if AUTONOMY_DC_BRIDGE
     {
         for (auto& item : FakeOtherPlayers)
-        { item.second.Level = 80; item.second.AI.ItemLevel = 180; }
+        { item.second.Level = 17; item.second.AI.ItemLevel = 180; }
         RuntimeGroupFake groups; groups.Database = &store; groups.DelayCreationSQL = true;
         OperationRuntime real(ReadOperationClock, &groups);
         auto realSettings = settings;
         realSettings.Enabled = true; realSettings.DryRun = false; realSettings.AssembleGroups = true;
         realSettings.TrustedDungeon = true; realSettings.MaxConcurrent = 1;
+        realSettings.PilotProfile = 1; realSettings.RealmMaxExpansion = 1;
+        realSettings.PilotGuild = 23;
         realSettings.AssemblySeconds = 300;
         real.Configure(realSettings); real.Start("disposable");
         auto tick = [&]
@@ -404,6 +408,7 @@ void TestOperations(GuildStore& guildStore, EnrollmentStore& enrollment)
             OperationRuntime combined(ReadOperationClock, &colocated);
             auto combinedSettings = realSettings; combinedSettings.Enabled = true;
             combined.Configure(combinedSettings); combined.Start("disposable");
+            assert(combined.Diagnose(24).find("outside_pilot_guild") != std::string::npos);
             auto combinedTick = [&]
             {
                 ++OperationClock; Runtime().Update(1000); Guilds().Update(1000); combined.Update(1000);
@@ -470,6 +475,25 @@ void TestOperations(GuildStore& guildStore, EnrollmentStore& enrollment)
                      "no simulated ACTIVE, unsafe-expiry protection, disabled cleanup, half-group restart manual gate; "
                      "group APIs are faked\n";
     }
+#else
+    {
+        RuntimeGroupFake groups;
+        OperationRuntime missingProfile(ReadOperationClock, &groups);
+        auto unavailable = settings;
+        unavailable.Enabled = true; unavailable.DryRun = false; unavailable.AssembleGroups = true;
+        unavailable.PilotProfile = 1; unavailable.RealmMaxExpansion = 1;
+        unavailable.PilotGuild = 23;
+        missingProfile.Configure(unavailable); missingProfile.Start("disposable");
+        for (unsigned n = 0; n < 80; ++n)
+        {
+            ++OperationClock; Runtime().Update(1000); Guilds().Update(1000); missingProfile.Update(1000);
+        }
+        assert(groups.Creates == 0 && missingProfile.Operations().empty());
+        assert(Scalar(store, "SELECT COUNT(*) FROM playerbot_autonomy_operation_lease") == 0);
+        missingProfile.Stop();
+        std::cout << "PASS missing/incompatible profile provider: no real admission, groups or leases\n";
+    }
+#endif
     AutonomyOperationCommands commands;
     auto handler = commands.GetCommands().at(0).Handler;
     ChatHandler console;

@@ -66,6 +66,17 @@ jobs:
             tests/OperationTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
             -o /tmp/autonomy-operation-tests
           /tmp/autonomy-operation-tests
+      - name: Checkout versioned Classic pilot interface
+        uses: actions/checkout@v4
+        with:
+          repository: RovxBot/mod-dungeon-clear
+          ref: fad8a7691197f5be922f00d6cd2d3430e68dc48c
+          path: _deps/dungeon-clear
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            src/Integration/DcAutonomyApi.h
+            src/Integration/DcAutonomyPilot.h
       - name: Test real group executor and core adapter
         # Real group and core-adapter tests execute production code with fakes;
         # they neither configure nor build the game server.
@@ -76,11 +87,16 @@ jobs:
             tests/RealGroupTests.cpp src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
             -o /tmp/autonomy-real-group-tests
           /tmp/autonomy-real-group-tests
-          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Itests/group_fakes -Isrc \
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Itests/group_fakes -I_deps/dungeon-clear/src -Isrc \
             tests/CoreGroupPortTests.cpp src/Operations/CoreGroupPort.cpp \
             src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
             -o /tmp/autonomy-core-group-tests
           /tmp/autonomy-core-group-tests
+          c++ -std="$CXX_STANDARD" -O2 -pthread -Wall -Wextra -Werror -pedantic -Itests/group_fakes -Isrc \
+            tests/CoreGroupPortTests.cpp src/Operations/CoreGroupPort.cpp \
+            src/Operations/RosterPlanner.cpp src/Operations/OperationCoordinator.cpp \
+            -o /tmp/autonomy-core-group-missing-profile-tests
+          /tmp/autonomy-core-group-missing-profile-tests
       - name: Test recruitment controller
         env:
           CXX_STANDARD: ${{ matrix.standard }}
@@ -187,13 +203,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-dungeon-clear
-          ref: f9201249e287027f0d393da17eb85ef588c49847
+          ref: fad8a7691197f5be922f00d6cd2d3430e68dc48c
           path: _deps/dungeon-clear
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             src/Integration/DcAutonomyApi.h
             src/Integration/DcAutonomyController.h
+            src/Integration/DcAutonomyPilot.h
       - name: Execute production SQL against disposable fixtures
         env:
           AUTONOMY_MYSQL_HOST: 127.0.0.1
@@ -243,7 +260,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: RovxBot/mod-dungeon-clear
-          ref: f9201249e287027f0d393da17eb85ef588c49847
+          ref: fad8a7691197f5be922f00d6cd2d3430e68dc48c
           path: _deps/dungeon-clear
           persist-credentials: false
           sparse-checkout-cone-mode: false

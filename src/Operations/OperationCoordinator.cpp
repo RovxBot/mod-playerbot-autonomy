@@ -66,7 +66,8 @@ bool OperationSettings::Valid() const
            TimeoutSeconds <= 600 && LeaseSeconds > TimeoutSeconds && LeaseSeconds <= 900 &&
            MaxReal == 1 && AssemblySeconds >= 30 && AssemblySeconds <= 300 && ProgressSeconds >= 30 &&
            ProgressSeconds <= 1800 && RunSeconds >= ProgressSeconds && RunSeconds <= 7200 &&
-           CooldownSeconds >= 30 && CooldownSeconds <= 3600 && (!AssembleGroups || !Rules.CrossGuild);
+           CooldownSeconds >= 30 && CooldownSeconds <= 3600 &&
+           (!AssembleGroups || (!Rules.CrossGuild && PilotProfile == 1 && PilotGuild && RealmMaxExpansion <= 1));
 }
 Operation NextOperation(Operation const& current, std::uint64_t now, bool enabled, bool valid)
 {

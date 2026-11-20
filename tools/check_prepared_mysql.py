@@ -19,7 +19,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CORE_PIN = "0554bcdd664ff6d85291ca2a10fd31d3e37e89e6"
 PLAYERBOTS_PIN = "696a009ceeeb400cfe40eedcd8a6c9333bdc1b59"
-DC_PIN = "f9201249e287027f0d393da17eb85ef588c49847"
+DC_PIN = "fad8a7691197f5be922f00d6cd2d3430e68dc48c"
 
 
 def main():

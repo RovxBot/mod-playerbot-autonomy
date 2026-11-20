@@ -24,6 +24,12 @@ simulations remain selectable. Travel, entry/exit and automatic binding/restart
 recovery remain follow-up work. No combined server build or real dungeon pilot
 has been performed for this candidate.
 
+[Classic RFC profile and operator runbook](docs/M3A_CLASSIC_PILOT.md) supersedes
+the original Utgarde Keep target. The default-off v2 bridge allows only normal
+Ragefire Chasm, validates four actual encounter definitions and enforces a
+Classic/TBC progression ceiling. One existing managed guild must be selected;
+no character or guild progression is provisioned.
+
 ## Vision
 
 Create a populated MMO world with two complementary types of random playerbots:

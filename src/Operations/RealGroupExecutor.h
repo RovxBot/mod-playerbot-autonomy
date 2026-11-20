@@ -17,6 +17,7 @@ class GroupPort
 public:
     virtual ~GroupPort() = default;
     virtual bool Available() const { return true; }
+    virtual void ConfigurePilot(std::uint32_t, std::uint32_t) {}
     virtual std::string Admission(Operation const&) const = 0;
     virtual GroupEvidence Inspect(std::uint32_t group) const = 0;
     virtual std::uint32_t Create(std::uint32_t leader) = 0;

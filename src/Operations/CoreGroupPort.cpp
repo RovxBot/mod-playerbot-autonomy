@@ -1,4 +1,5 @@
 #include "RealGroupExecutor.h"
+#include "DungeonBridge.h"
 
 #if __has_include("Group.h") && __has_include("TC9Sidecar.h")
 #include "CharacterCache.h"
@@ -47,6 +48,31 @@ bool Bound(Player* p)
 class CoreGroupPort final : public GroupPort
 {
 public:
+    void ConfigurePilot(uint32 id, uint32 realmExpansion) override
+    {
+        _pilot = id;
+        _realmExpansion = realmExpansion;
+    }
+    std::string PilotAdmission(Player* p) const
+    {
+#if AUTONOMY_DC_BRIDGE
+        auto const* profile = DcAutonomy::FindPilot(DcAutonomy::PilotVersion, _pilot);
+        if (!profile || !DcAutonomy::PilotAllowed(profile->version, profile->id, profile->map,
+                                                profile->difficulty, _realmExpansion))
+            return "unsupported_pilot_or_realm_progression";
+        if (!DcAutonomy::PilotEligible(*profile, _realmExpansion, p->GetLevel(),
+                                       GET_PLAYERBOT_AI(p)->GetEquipGearScore(p)))
+            return "pilot_level_or_equipment_ineligible";
+        // Calls the core's normal access policy, including script hooks and
+        // progression requirements. It grants no missing access requirement.
+        if (sMapMgr->PlayerCannotEnter(profile->map, p, true) != Map::CAN_ENTER)
+            return "pilot_ordinary_instance_access_denied";
+        return "";
+#else
+        (void)p;
+        return "dungeon_profile_provider_unavailable";
+#endif
+    }
     void Changed(uint32 id, uint32 member = 0)
     {
         if (!_trackedCount.load(std::memory_order_acquire))
@@ -84,13 +110,9 @@ public:
             if (p->GetDungeonDifficulty() != DUNGEON_DIFFICULTY_NORMAL ||
                 p->GetRaidDifficulty() != RAID_DIFFICULTY_10MAN_NORMAL)
                 return "existing_difficulty_would_be_changed";
-            // Target-specific admission, followed by the actual core access
-            // policy. These conservative equipment/level floors do not assert
-            // that the party can clear an encounter.
-            if (p->GetLevel() < 70 || GET_PLAYERBOT_AI(p)->GetEquipGearScore(p) < 115)
-                return "utgarde_keep_capability_floor_not_met";
-            if (sMapMgr->PlayerCannotEnter(574, p, true) != Map::CAN_ENTER)
-                return "utgarde_keep_access_denied";
+            auto rejection = PilotAdmission(p);
+            if (!rejection.empty())
+                return rejection;
             if (p->GetTeamId() != op.Faction || p->GetGuildId() != m.Guild || m.Guild != op.Guild ||
                 p->GetSession()->GetAccountId() != m.Account)
                 return "assembly_identity_changed";
@@ -180,6 +202,8 @@ public:
             p->GetSession()->GetAccountId() != m.Account || p->GetGuildId() != m.Guild ||
             Runtime().Cache().OperationOwner(member) != op.Id)
             return false;
+        if (!PilotAdmission(p).empty())
+            return false;
         {
             std::lock_guard<std::mutex> lock(_mutex);
             _addingGroup = id;
@@ -215,6 +239,7 @@ public:
     }
 
 private:
+    uint32 _pilot = 0, _realmExpansion = 0;
     mutable std::mutex _mutex;
     std::map<uint32, bool> _tracked;
     std::atomic<std::size_t> _trackedCount{0};
